@@ -10,15 +10,24 @@ import random
 
 import numpy as np
 import torchvision.transforms as transforms
-
-from skimage.transform import SimilarityTransform
 import torchvision.transforms.functional as tF
+
+from cub2011 import Cub2011
+from skimage.transform import SimilarityTransform
+
 
 
 def get_corners(im):
     """returns cartesian coordinates of the corners 
         of an (h,w,c) image centered at (0,0)"""
-    h,w,c = im.shape
+    if len(im.shape) == 3:
+        h,w,c = im.shape
+    elif len(im.shape) == 2:
+        h,w = im.shape
+    elif len(im.shape) == 4:
+        b,h,w,c = im.shape
+    else:
+        raise NotImplementedError
 #     h -= 1
 #     w -= 1
     corners = np.array([[-h/2, w/2],[h/2, w/2],[h/2, -w/2],[-h/2, -w/2]])
@@ -286,16 +295,17 @@ class SSTransformation(object):
     preserve its semantic information. From a GDL perspective, these transformation 
     are symmetries of the label funciton."""
     
-    def __init__(self, max_r, max_t, max_s=1.6, shape=(32,32,3)):
+    def __init__(self, max_r, max_t, max_s=1.6,
+                 interpolation=transforms.InterpolationMode.BICUBIC):
         """
         params: 
            transforms (list) : list of transforms
         """
-        self.shape = shape
-        C,H,W = shape
         self.max_r = max_r
         self.max_t = max_t
         self.max_s = max_s
+        self.interpolation = interpolation
+
         
     def __call__(self, img):
         """Applies an affine transformation to the image
@@ -320,10 +330,26 @@ class SSTransformation(object):
         #     scale = np.random.uniform(1.,self.max_s)
         
         scale = self.max_s
-        
-        choice = np.random.choice([0,1],p=[0.9,0.1])
+        priority_RT = np.random.choice([0,1],p=[0.9,0.1])
         im = np.asarray(img)
-        if choice == 0:
+        shape = im.shape
+
+        if len(im.shape) == 3:
+            h,w,c = im.shape
+        elif len(im.shape) == 2:
+            h,w = im.shape
+            c = 1
+        else:
+            raise NotImplementedError("Invalid image shape: {}.".format(im.shape))
+
+        if c == 1:
+            fill = (0,)
+        elif c == 3: 
+            fill = (0,1,0,)
+        else:
+            raise NotImplementedError("No fill value available for number of channels: {}.".format(self.c))
+
+        if priority_RT == 0: #rotate first
             scaled = get_warped_corners_image(im, SimilarityTransform(scale=scale))
             valid_r = get_valid_affine_range(
                 warped_corners=scaled['warpedcorners'],orig_corners=scaled['corners'],
@@ -340,7 +366,7 @@ class SSTransformation(object):
             translation = np.random.uniform(-valid_t,valid_t)
                  
             
-        elif choice == 1:
+        elif priority_RT == 1: #translate first
             scaled = get_warped_corners_image(im, SimilarityTransform(scale=scale))
             valid_t = get_valid_affine_range(
                 warped_corners=scaled['warpedcorners'],orig_corners=scaled['corners'],
@@ -361,8 +387,8 @@ class SSTransformation(object):
                 translate=(translation,translation),
                 scale=scale,
                 shear=0,
-                interpolation=transforms.InterpolationMode.BICUBIC,
-                fill=(0,255,0)
+                interpolation=self.interpolation,
+                fill=fill
         )
         return aug
 
@@ -418,23 +444,28 @@ def get_aug_dataset(dataset, use_train=False, data_root_ovr=None, sstransformati
     if dataset == 'cifar10':
         dataset_regular = torchvision.datasets.CIFAR10(root=DATAROOT, train=use_train,
                                                        download=True, transform=transform)
-
         dataset_aug = torchvision.datasets.CIFAR10(root=DATAROOT, train=use_train,
                                                    download=True, transform=transform_aug)
-    elif dataset == 'imageNet':
-        raise NotImplementedError("No dataset of name: {}, please select amoung the available datasets: [cifar10].".format(dataset))
     elif dataset == 'MNIST':
-        raise NotImplementedError("No dataset of name: {}, please select amoung the available datasets: [cifar10].".format(dataset))
-    elif dataset == 'SVHN':
-        raise NotImplementedError("No dataset of name: {}, please select amoung the available datasets: [cifar10].".format(dataset))
+        dataset_regular = torchvision.datasets.MNIST(root=DATAROOT, train=use_train,
+                                                       download=True, transform=transform)
+        dataset_aug = torchvision.datasets.MNIST(root=DATAROOT, train=use_train,
+                                                   download=True, transform=transform_aug)
+    # elif dataset == 'cub2011':
+    #     dataset_regular = Cub2011(root=DATAROOT, train=use_train,
+    #                                                    download=True, transform=transform)
+    #     dataset_aug = Cub2011(root=DATAROOT, train=use_train,
+    #                                                download=True, transform=transform_aug)
     else:
-        raise NotImplementedError("No dataset of name: {}, please select amoung the available datasets: [cifar10].".format(dataset))
+        raise NotImplementedError("No dataset of name: {}, please select amoung the available datasets: [cifar10, MNIST].".format(dataset))
 
     return dataset_regular, dataset_aug
 
 
 
-def show_reg_aug_side_by_side(dataset_regular,dataset_aug,total_plots=40,plots_per_row=5,figsize=(20,67),savepath=None):
+def show_reg_aug_side_by_side(dataset_regular,dataset_aug,total_plots=40,
+                              plots_per_row=5,figsize=(20,67),savepath=None,
+                              cmap='viridis'):
     """Funtion plots regular and augmented images side by side for comparison."""
     classes = dataset_regular.classes
     n = np.ceil(total_plots/plots_per_row).astype(np.int32) * 2
@@ -442,11 +473,11 @@ def show_reg_aug_side_by_side(dataset_regular,dataset_aug,total_plots=40,plots_p
     for x in range(total_plots):
         c,r = x % plots_per_row, int(x/plots_per_row) * 2
         axs[r,c].set_title("Regular | Class: {}".format(classes[dataset_regular[x][1]]))
-        axs[r,c].imshow(dataset_regular[x][0].permute(1,2,0))
+        axs[r,c].imshow(dataset_regular[x][0].permute(1,2,0),cmap=cmap)
         
         r += 1
         axs[r,c].set_title("Augmented | Class: {}".format(classes[dataset_aug[x][1]]))
-        axs[r,c].imshow(dataset_aug[x][0].permute(1,2,0))
+        axs[r,c].imshow(dataset_aug[x][0].permute(1,2,0),cmap=cmap)
 
     if savepath:
         fig.savefig(savepath,bbox_inches='tight',dpi=400)

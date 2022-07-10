@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 
 class Cub2011(Dataset):
     base_folder = 'CUB_200_2011/images'
-    url = 'http://www.vision.caltech.edu/visipedia-data/CUB-200-2011/CUB_200_2011.tgz'
+    url = 'https://tind-caltechdata.s3.amazonaws.com/fba51a3dc5cf42efad2c64225172351d?Signature=tBW%2BE%2BfQ7y%2FfHYQrJPa9RIITj9M%3D&Expires=1657470706&AWSAccessKeyId=AKIAJSK7IFF5HDDM5UBQ&response-content-type=application/force-download&response-content-disposition=attachment%3Bfilename%3D%22CUB_200_2011.tgz%2'
     filename = 'CUB_200_2011.tgz'
     tgz_md5 = '97eceeb196236b17998738112f37df78'
 
