@@ -1,0 +1,16 @@
+batch_size=128
+test_batch_size=128
+epochs=100
+weight_decay=0
+lr=0.01
+momentum=0.9
+epsilon=0.3
+num_steps=40
+step_size=0.01
+beta=1.0
+seed=1
+log_interval=100
+model_dir='./TRADES/model-mnist-smallCNN'
+model_name='SmallCNN'
+save_freq=5
+dataset='MNIST'
