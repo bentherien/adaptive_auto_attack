@@ -25,7 +25,8 @@ def trades_loss_ORIG(model,
                 perturb_steps=10,
                 beta=1.0,
                 distance='l_inf',
-                device_num=0):
+                device_num=0,
+                neptune_run=None):
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
     model.eval()
@@ -83,7 +84,11 @@ def trades_loss_ORIG(model,
     loss_natural = F.cross_entropy(logits, y)
     loss_robust = (1.0 / batch_size) * criterion_kl(F.log_softmax(model(x_adv), dim=1),
                                                     F.softmax(model(x_natural), dim=1))
-    loss = loss_natural + beta * loss_robust
+    loss_robust = beta * loss_robust
+    if neptune_run:
+        neptune_run['training_robust_loss'].log(loss_robust.item())
+        neptune_run['training_natural_loss'].log(loss_natural.item())
+    loss = loss_natural + loss_robust
     return loss
 
 
@@ -133,7 +138,8 @@ def trades_loss_with_SST(model,
                         perturb_steps=10,
                         beta=1.0,
                         distance='l_inf',
-                        device_num=0):
+                        device_num=0,
+                        neptune_run=None):
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
     criterion_kl_SST = nn.KLDivLoss(reduce=False)
@@ -199,5 +205,9 @@ def trades_loss_with_SST(model,
     loss_natural = F.cross_entropy(logits, y)
     loss_robust = (1.0 / batch_size) * criterion_kl(F.log_softmax(model(x_adv), dim=1),
                                                     F.softmax(model(x_natural), dim=1))
-    loss = loss_natural + beta * loss_robust
+    loss_robust = beta * loss_robust
+    if neptune_run:
+        neptune_run['training_robust_loss'].log(loss_robust.item())
+        neptune_run['training_natural_loss'].log(loss_natural.item())
+    loss = loss_natural + loss_robust
     return loss
