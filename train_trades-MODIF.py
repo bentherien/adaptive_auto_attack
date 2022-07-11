@@ -301,11 +301,13 @@ def main():
         # evaluation on natural examples
         print('================================================================')
         train_loss, training_accuracy = eval_train(model, device, train_loader)
-        neptune_run['eval_train_loss'].log(train_loss)
-        neptune_run['eval_training_accuracy'].log(training_accuracy)
+        if neptune_run:
+            neptune_run['eval_train_loss'].log(train_loss)
+            neptune_run['eval_training_accuracy'].log(training_accuracy)
         test_loss, testing_accuracy = eval_test(model, device, test_loader)
-        neptune_run['eval_test_loss'].log(test_loss)
-        neptune_run['eval_testing_accuracy'].log(testing_accuracy)
+        if neptune_run:
+            neptune_run['eval_test_loss'].log(test_loss)
+            neptune_run['eval_testing_accuracy'].log(testing_accuracy)
         print('================================================================')
         test_time.append(time.time()-t1)
 
