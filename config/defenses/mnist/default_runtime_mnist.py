@@ -1,3 +1,4 @@
+_base_=['../default_runtine.py']
 batch_size=128
 test_batch_size=128
 epochs=100

@@ -86,23 +86,14 @@ kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 
 
 
-# setup data loader
-# transform_train = transforms.Compose([
-#     transforms.RandomCrop(32, padding=4),
-#     transforms.RandomHorizontalFlip(),
-#     transforms.ToTensor(),
-# ])
-# transform_test = transforms.Compose([
-#     transforms.ToTensor(),
-# ])
 
 
 if cfg.dataset == 'cifar10':
     transform_train = transforms.Compose([
-    transforms.RandomCrop(32, padding=4),
-    transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-    ])
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor()
+        ])
     transform_test = transforms.Compose([
         transforms.ToTensor(),
     ])
@@ -210,19 +201,22 @@ def adjust_learning_rate_mnist(optimizer, epoch):
         param_group['lr'] = lr
 
 
-def get_model(model_name,device):
+def get_model(model_name,device,verbose=False):
     if model_name == 'SmallCNN':
         model = SmallCNN().to(device)
     elif model_name == 'WRN-34-10':
         model = WideResNet().to(device)
+
+    if verbose:
+        from torchsummary import summary
+        s = summary(model,trainset[0][0].shape)
     return model
 
 
 def main():
     # init model, ResNet18() can be also used here for training
-    model = get_model(cfg.model_name,device)
-    # print()
-    # print(cfg.lr,cfg.momentum,cfg.weight_decay)
+    model = get_model(cfg.model_name,device,verbose=cfg.verbose)
+  
     optimizer = optim.SGD(model.parameters(), lr=cfg.lr, momentum=cfg.momentum, weight_decay=cfg.weight_decay)
 
     for epoch in range(1, cfg.epochs + 1):
