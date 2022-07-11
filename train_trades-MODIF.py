@@ -18,7 +18,7 @@ from models.wideresnet import *
 from models.resnet import *
 from models.net_mnist import *
 from models.small_cnn import *
-from trades import trades_loss
+from new_trades_losses import trades_loss_ORIG, trades_loss_with_SST
 
 parser = argparse.ArgumentParser(description='PyTorch TRADES Adversarial Training')
 parser.add_argument('--batch-size', '-bs', type=int, #default=128, 
@@ -56,6 +56,8 @@ parser.add_argument('--no-neptune', '-nn', default=False, action='store_true',
                     help='Whether to use neptune logging or not')
 parser.add_argument('--config', '-c', default='./config/defenses/default_runtime.py', 
                     type=str, metavar='CFG', help='Whether to use neptune logging or not')
+parser.add_argument('--device-num', '-dn', default=0, 
+                    type=int, required=True, help='The number of the GPU to use')
 
 
 args = parser.parse_args()
@@ -72,6 +74,11 @@ else:
     neptune_run['config'] = cfg
     neptune_run['cli_args'] = args
 
+if cfg.trades_loss == 'orig':
+    trades_loss = trades_loss_ORIG
+elif cfg.trades_loss == 'linfty_u_RT':
+    trades_loss = trades_loss_with_SST
+
 
 print(cfg)
 
@@ -81,7 +88,7 @@ if not os.path.exists(model_dir):
     os.makedirs(model_dir)
 use_cuda = not cfg.no_cuda and torch.cuda.is_available()
 torch.manual_seed(cfg.seed)
-device = torch.device("cuda" if use_cuda else "cpu")
+device = torch.device("cuda:{}".format(cfg.device_num) if use_cuda else "cpu")
 kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 
 
@@ -110,7 +117,9 @@ elif cfg.dataset == 'MNIST':
 else:
     raise NotImplementedError("Invalid dataset name: {}".format(cfg.dataset))
 
-def train(cfg, model, device, train_loader, optimizer, epoch):
+
+
+def train(cfg, model, device, train_loader, optimizer, epoch, device_num, neptune_run):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
@@ -125,10 +134,14 @@ def train(cfg, model, device, train_loader, optimizer, epoch):
                            step_size=cfg.step_size,
                            epsilon=cfg.epsilon,
                            perturb_steps=cfg.num_steps,
-                           beta=cfg.beta)
+                           beta=cfg.beta,
+                           device_num=device_num)
+
         # print(loss)
         loss.backward()
         optimizer.step()
+
+        neptune_run['trades_loss'].log(loss.item())
 
         # print progress
         if batch_idx % cfg.log_interval == 0:
@@ -227,7 +240,7 @@ def main():
             adjust_learning_rate_cifar10(optimizer, epoch)
 
         # adversarial training
-        train(cfg, model, device, train_loader, optimizer, epoch)
+        train(cfg, model, device, train_loader, optimizer, epoch, cfg.device_num, neptune_run)
 
         # evaluation on natural examples
         print('================================================================')
