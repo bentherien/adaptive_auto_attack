@@ -1,4 +1,4 @@
-_base_=['../default_runtine.py']
+_base_=['../default_runtime.py']
 batch_size=128
 test_batch_size=128
 epochs=100

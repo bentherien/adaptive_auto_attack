@@ -23,13 +23,14 @@ def trades_loss_ORIG(model,
                 epsilon=0.031,
                 perturb_steps=10,
                 beta=1.0,
-                distance='l_inf'):
+                distance='l_inf',
+                device_num=0):
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
     model.eval()
     batch_size = len(x_natural)
     # generate adversarial example
-    x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda().detach()
+    x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda(device_num).detach()
     if distance == 'l_inf':
         for _ in range(perturb_steps):
             x_adv.requires_grad_()
@@ -41,7 +42,7 @@ def trades_loss_ORIG(model,
             x_adv = torch.min(torch.max(x_adv, x_natural - epsilon), x_natural + epsilon)
             x_adv = torch.clamp(x_adv, 0.0, 1.0)
     elif distance == 'l_2':
-        delta = 0.001 * torch.randn(x_natural.shape).cuda().detach()
+        delta = 0.001 * torch.randn(x_natural.shape).cuda(device_num).detach()
         delta = Variable(delta.data, requires_grad=True)
 
         # Setup optimizers
@@ -113,13 +114,14 @@ def trades_loss_with_SST(model,
                         epsilon=0.031,
                         perturb_steps=10,
                         beta=1.0,
-                        distance='l_inf'):
+                        distance='l_inf',
+                        device_num=0):
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
     model.eval()
     batch_size = len(x_natural)
     # generate adversarial example
-    x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda().detach()
+    x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda(device_num).detach()
     if distance == 'l_inf':
         for _ in range(perturb_steps):
             x_adv.requires_grad_()
@@ -131,7 +133,7 @@ def trades_loss_with_SST(model,
             x_adv = torch.min(torch.max(x_adv, x_natural - epsilon), x_natural + epsilon)
             x_adv = torch.clamp(x_adv, 0.0, 1.0)
     elif distance == 'l_2':
-        delta = 0.001 * torch.randn(x_natural.shape).cuda().detach()
+        delta = 0.001 * torch.randn(x_natural.shape).cuda(device_num).detach()
         delta = Variable(delta.data, requires_grad=True)
 
         # Setup optimizers
