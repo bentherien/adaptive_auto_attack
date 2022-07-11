@@ -146,8 +146,7 @@ def train(cfg, model, device, train_loader, optimizer, epoch, device_num, neptun
                            epsilon=cfg.epsilon,
                            perturb_steps=cfg.num_steps,
                            beta=cfg.beta,
-                           device_num=device_num,
-                           neptune_run=neptune_run)
+                           device_num=device_num)
 
         # print(loss)
         loss.backward()
