@@ -21,7 +21,7 @@ from models.wideresnet import *
 from models.resnet import *
 from models.net_mnist import *
 from models.small_cnn import *
-from new_trades_losses import trades_loss_ORIG, trades_loss_with_SST
+from new_trades_losses import trades_loss_ORIG, trades_loss_linfty_compose_RT, trades_loss_linfty_u_RT, trades_loss_RT
 
 parser = argparse.ArgumentParser(description='PyTorch TRADES Adversarial Training')
 parser.add_argument('--batch-size', '-bs', type=int, #default=128, 
@@ -79,8 +79,12 @@ else:
 
 if cfg.trades_loss == 'orig':
     trades_loss = trades_loss_ORIG
+elif cfg.trades_loss == 'linfty_compose_RT':
+    trades_loss = trades_loss_linfty_compose_RT
 elif cfg.trades_loss == 'linfty_u_RT':
-    trades_loss = trades_loss_with_SST
+    trades_loss = trades_loss_linfty_u_RT
+elif cfg.trades_loss == 'RT':
+    trades_loss = trades_loss_RT
 
 
 print(cfg)
@@ -137,6 +141,7 @@ def train(cfg, model, device, train_loader, optimizer, epoch, device_num, neptun
                            x_natural=data,
                            y=target,
                            optimizer=optimizer,
+                           neptune_run=neptune_run,
                            step_size=cfg.step_size,
                            epsilon=cfg.epsilon,
                            perturb_steps=cfg.num_steps,
