@@ -3,6 +3,7 @@ import torch
 
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.transforms as T 
 import torch.optim as optim
 
 from torch.autograd import Variable
@@ -86,7 +87,7 @@ def trades_loss_ORIG(model,
     return loss
 
 
-def select_WX(model, x_natural, criterion):
+def select_WX(model, x_natural, y, criterion, device_num):
     """
     Given a batch of inputs, this method selects the worst of 
     10 uniformly sampled spatial transformations.
@@ -94,16 +95,33 @@ def select_WX(model, x_natural, criterion):
     Args: 
         model (nn.Module): the model being trained 
         x_natural (torch.Tensor): the current input batch 
-        criterion: the loss function being used 
 
     Returns: 
         the batch of spatially transformed images which maximize loss
     """
-    from augmentation_tools import SSTransformation
+    with torch.no_grad():
+        # Shape: [10, bs, channels, width, height]
+        affine_x_10 = torch.zeros((10,) + x_natural.shape).cuda(device_num)
+        losses = torch.zeros(10, x_natural.shape[0]).cuda(device_num)
+        affine_T = T.RandomAffine(degrees=(-30, 30), translate=(0.1, 0.1), scale=(1, 1), interpolation=T.InterpolationMode.BILINEAR)
+        for i in range(10):
+            # Apply random affine transformation to each image in the batch
+            affine_x = torch.cat([affine_T(x_natural[j]).unsqueeze(0) for j in range(len(x_natural))], dim=0)
+            affine_x_10[i] = affine_x
 
+            losses[i] = torch.sum(criterion(F.log_softmax(model(affine_x), dim=1),
+                            F.softmax(model(x_natural), dim=1)), dim=1)
 
+        # Identify, for each image, the transform (of the 10) that maximizes the loss
+        wc10_index = torch.argmax(losses, dim=0)
 
+        # Should use torch gather here
+        affine_x_10 = torch.transpose(affine_x_10, 0, 1)
+        wc10_x = torch.zeros_like(x_natural)
+        for i in range(len(x_natural)):
+            wc10_x[i] = affine_x_10[i][wc10_index[i]]
 
+    return wc10_x
 
 
 def trades_loss_with_SST(model,
@@ -118,9 +136,17 @@ def trades_loss_with_SST(model,
                         device_num=0):
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
+    criterion_kl_SST = nn.KLDivLoss(reduce=False)
     model.eval()
     batch_size = len(x_natural)
     # generate adversarial example
+
+    ### MODIFICATION START
+
+    x_natural = select_WX(model, x_natural, y, criterion_kl_SST, device_num)
+
+    ### MODIFICATION_END
+
     x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda(device_num).detach()
     if distance == 'l_inf':
         for _ in range(perturb_steps):
