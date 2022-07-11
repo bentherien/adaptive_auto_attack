@@ -13,3 +13,7 @@ numpy_datasets/*
 
 _deprecated_a1_ben/cifar10_adv/*
 _deprecated_a1_ben/mnist_adv/*
+
+*.pt
+*.tar
+TRADES/data

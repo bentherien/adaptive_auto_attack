@@ -24,13 +24,14 @@ def trades_loss_ORIG(model,
                 epsilon=0.031,
                 perturb_steps=10,
                 beta=1.0,
-                distance='l_inf'):
+                distance='l_inf',
+                device_num=0):
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
     model.eval()
     batch_size = len(x_natural)
     # generate adversarial example
-    x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda().detach()
+    x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda(device_num).detach()
     if distance == 'l_inf':
         for _ in range(perturb_steps):
             x_adv.requires_grad_()
@@ -42,7 +43,7 @@ def trades_loss_ORIG(model,
             x_adv = torch.min(torch.max(x_adv, x_natural - epsilon), x_natural + epsilon)
             x_adv = torch.clamp(x_adv, 0.0, 1.0)
     elif distance == 'l_2':
-        delta = 0.001 * torch.randn(x_natural.shape).cuda().detach()
+        delta = 0.001 * torch.randn(x_natural.shape).cuda(device_num).detach()
         delta = Variable(delta.data, requires_grad=True)
 
         # Setup optimizers
@@ -86,7 +87,7 @@ def trades_loss_ORIG(model,
     return loss
 
 
-def select_WX(model, x_natural, y, criterion):
+def select_WX(model, x_natural, y, criterion, device_num):
     """
     Given a batch of inputs, this method selects the worst of 
     10 uniformly sampled spatial transformations.
@@ -100,8 +101,8 @@ def select_WX(model, x_natural, y, criterion):
     """
     with torch.no_grad():
         # Shape: [10, bs, channels, width, height]
-        affine_x_10 = torch.zeros((10,) + x_natural.shape).cuda()
-        losses = torch.zeros(10, x_natural.shape[0]).cuda()
+        affine_x_10 = torch.zeros((10,) + x_natural.shape).cuda(device_num)
+        losses = torch.zeros(10, x_natural.shape[0]).cuda(device_num)
         affine_T = T.RandomAffine(degrees=(-30, 30), translate=(0.1, 0.1), scale=(1, 1), interpolation=T.InterpolationMode.BILINEAR)
         for i in range(10):
             # Apply random affine transformation to each image in the batch
@@ -131,7 +132,8 @@ def trades_loss_with_SST(model,
                         epsilon=0.031,
                         perturb_steps=10,
                         beta=1.0,
-                        distance='l_inf'):
+                        distance='l_inf',
+                        device_num=0):
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
     criterion_kl_SST = nn.KLDivLoss(reduce=False)
@@ -141,11 +143,11 @@ def trades_loss_with_SST(model,
 
     ### MODIFICATION START
 
-    x_natural = select_WX(model, x_natural, y, criterion_kl_SST)
+    x_natural = select_WX(model, x_natural, y, criterion_kl_SST, device_num)
 
     ### MODIFICATION_END
 
-    x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda().detach()
+    x_adv = x_natural.detach() + 0.001 * torch.randn(x_natural.shape).cuda(device_num).detach()
     if distance == 'l_inf':
         for _ in range(perturb_steps):
             x_adv.requires_grad_()
@@ -157,7 +159,7 @@ def trades_loss_with_SST(model,
             x_adv = torch.min(torch.max(x_adv, x_natural - epsilon), x_natural + epsilon)
             x_adv = torch.clamp(x_adv, 0.0, 1.0)
     elif distance == 'l_2':
-        delta = 0.001 * torch.randn(x_natural.shape).cuda().detach()
+        delta = 0.001 * torch.randn(x_natural.shape).cuda(device_num).detach()
         delta = Variable(delta.data, requires_grad=True)
 
         # Setup optimizers
