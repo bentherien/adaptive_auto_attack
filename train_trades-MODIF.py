@@ -4,7 +4,10 @@ import sys
 import argparse
 import torch
 import torchvision
+import time
 
+
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -119,6 +122,9 @@ else:
 
 
 
+
+
+
 def train(cfg, model, device, train_loader, optimizer, epoch, device_num, neptune_run):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -226,13 +232,43 @@ def get_model(model_name,device,verbose=False):
     return model
 
 
+def estimateRemainingTime(trainTime, testTime, epochs, currentEpoch, testStep):
+    """Estimates the remaining training time based on imput
+    
+    Estimates remaining training time by using averages of the 
+    each training and test epoch computed. Displays a message 
+    indicating averages expected remaining time.
+    parameters:
+        trainTime -- list of time elapsed for each training epoch
+        testTime -- list of time elapsed for each testing epoch
+        epochs -- the total number of epochs specified
+        currentEpoch -- the current epoch 
+        testStep -- epoch multiple for validation set verfification 
+    """
+    meanTrain = np.mean(trainTime)
+    meanTest = np.mean(testTime)
+
+    remainingEpochs = epochs - currentEpoch
+
+    remainingTrain = (meanTrain *  remainingEpochs) / 60
+    remainingTest = (meanTest * (int(remainingEpochs / testStep) + 1)) / 60
+    remainingTotal = remainingTest + remainingTrain
+
+    print("[INFO] ~{:.2f} m remaining. Mean train epoch duration: {:.2f} s. Mean test epoch duration: {:.2f} s.".format(
+        remainingTotal, meanTrain, meanTest
+    ))
+
+    return remainingTotal
+
 def main():
     # init model, ResNet18() can be also used here for training
     model = get_model(cfg.model_name,device,verbose=cfg.verbose)
   
     optimizer = optim.SGD(model.parameters(), lr=cfg.lr, momentum=cfg.momentum, weight_decay=cfg.weight_decay)
+    test_time, train_time = [],[]
 
     for epoch in range(1, cfg.epochs + 1):
+        t1 = time.time()
         # adjust learning rate for SGD
         if cfg.dataset == 'MNIST':
             adjust_learning_rate_mnist(optimizer, epoch)
@@ -242,11 +278,15 @@ def main():
         # adversarial training
         train(cfg, model, device, train_loader, optimizer, epoch, cfg.device_num, neptune_run)
 
+        train_time.append(time.time()-t1)
+        t1 = time.time()
+
         # evaluation on natural examples
         print('================================================================')
         eval_train(model, device, train_loader)
         eval_test(model, device, test_loader)
         print('================================================================')
+        test_time.append(time.time()-t1)
 
         # save checkpoint
         if epoch % cfg.save_freq == 0:
@@ -254,6 +294,8 @@ def main():
                        os.path.join(model_dir, 'model-{}-epoch{}.pt'.format(cfg.model_name,epoch)))
             torch.save(optimizer.state_dict(),
                        os.path.join(model_dir, 'opt-{}-checkpoint_epoch{}.tar'.format(cfg.model_name,epoch)))
+
+        estimateRemainingTime(train_time, test_time, epochs=cfg.epochs+1, currentEpoch=epoch, testStep=1)
 
 
 if __name__ == '__main__':
