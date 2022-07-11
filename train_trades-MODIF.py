@@ -28,7 +28,7 @@ parser.add_argument('--batch-size', '-bs', type=int, #default=128,
                     metavar='N',help='input batch size for training (default: 128)')
 parser.add_argument('--test-batch-size', type=int, #default=128, 
                     metavar='N',help='input batch size for testing (default: 128)')
-parser.add_argument('--epochs', type=int, #default=76, 
+parser.add_argument('--epochs','-e', type=int, #default=76, 
                     metavar='N',help='number of epochs to train')
 parser.add_argument('--weight-decay', '--wd', #default=2e-4,
                     type=float, metavar='W')
@@ -141,13 +141,15 @@ def train(cfg, model, device, train_loader, optimizer, epoch, device_num, neptun
                            epsilon=cfg.epsilon,
                            perturb_steps=cfg.num_steps,
                            beta=cfg.beta,
-                           device_num=device_num)
+                           device_num=device_num,
+                           neptune_run=neptune_run)
 
         # print(loss)
         loss.backward()
         optimizer.step()
 
-        neptune_run['trades_loss'].log(loss.item())
+        if neptune_run:
+            neptune_run['training_trades_loss'].log(loss.item())
 
         # print progress
         if batch_idx % cfg.log_interval == 0:
@@ -206,6 +208,7 @@ def adjust_learning_rate_cifar10(optimizer, epoch):
         lr = cfg.lr * 0.001
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
+    return lr
 
 def adjust_learning_rate_mnist(optimizer, epoch):
     """decrease the learning rate"""
@@ -218,6 +221,7 @@ def adjust_learning_rate_mnist(optimizer, epoch):
         lr = cfg.lr * 0.001
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
+    return lr 
 
 
 def get_model(model_name,device,verbose=False):
@@ -254,15 +258,25 @@ def estimateRemainingTime(trainTime, testTime, epochs, currentEpoch, testStep):
     remainingTest = (meanTest * (int(remainingEpochs / testStep) + 1)) / 60
     remainingTotal = remainingTest + remainingTrain
 
-    print("[INFO] ~{:.2f} m remaining. Mean train epoch duration: {:.2f} s. Mean test epoch duration: {:.2f} s.".format(
-        remainingTotal, meanTrain, meanTest
+    
+    remaining_hours = int(remainingTotal / 60)
+    remainder_mins_float = remainingTotal - ( remaining_hours * 60 )
+    remainder_mins = int(remainder_mins_float)
+    remainder_secs = int((remainder_mins_float - remainder_mins) * 60)
+
+
+    print("[INFO] ~{:02d}:{:02d}:{:02d} (HH:MM:SS) remaining. Mean train epoch duration: {:.2f} s. Mean test epoch duration: {:.2f} s.".format(
+        remaining_hours,remainder_mins,remainder_secs, meanTrain, meanTest
     ))
 
-    return remainingTotal
+    return "{:02d}:{:02d}:{:02d} (HH:MM:SS)".format(remaining_hours,remainder_mins,remainder_secs)
+
+
 
 def main():
     # init model, ResNet18() can be also used here for training
     model = get_model(cfg.model_name,device,verbose=cfg.verbose)
+    #model.load_state_dict(torch.load(os.path.join(model_dir, 'model-{}-final.pt'.format(cfg.model_name))))
   
     optimizer = optim.SGD(model.parameters(), lr=cfg.lr, momentum=cfg.momentum, weight_decay=cfg.weight_decay)
     test_time, train_time = [],[]
@@ -271,9 +285,12 @@ def main():
         t1 = time.time()
         # adjust learning rate for SGD
         if cfg.dataset == 'MNIST':
-            adjust_learning_rate_mnist(optimizer, epoch)
+            lr_ = adjust_learning_rate_mnist(optimizer, epoch)
         elif cfg.dataset == 'cifar10':
-            adjust_learning_rate_cifar10(optimizer, epoch)
+            lr_ = adjust_learning_rate_cifar10(optimizer, epoch)
+
+        if neptune_run:
+            neptune_run['learning_rate'].log(lr_)
 
         # adversarial training
         train(cfg, model, device, train_loader, optimizer, epoch, cfg.device_num, neptune_run)
@@ -283,8 +300,12 @@ def main():
 
         # evaluation on natural examples
         print('================================================================')
-        eval_train(model, device, train_loader)
-        eval_test(model, device, test_loader)
+        train_loss, training_accuracy = eval_train(model, device, train_loader)
+        neptune_run['eval_train_loss'].log(train_loss)
+        neptune_run['eval_training_accuracy'].log(training_accuracy)
+        test_loss, testing_accuracy = eval_test(model, device, test_loader)
+        neptune_run['eval_test_loss'].log(test_loss)
+        neptune_run['eval_testing_accuracy'].log(testing_accuracy)
         print('================================================================')
         test_time.append(time.time()-t1)
 
@@ -295,7 +316,14 @@ def main():
             torch.save(optimizer.state_dict(),
                        os.path.join(model_dir, 'opt-{}-checkpoint_epoch{}.tar'.format(cfg.model_name,epoch)))
 
-        estimateRemainingTime(train_time, test_time, epochs=cfg.epochs+1, currentEpoch=epoch, testStep=1)
+        remaining_time = estimateRemainingTime(train_time, test_time, epochs=cfg.epochs+1, currentEpoch=epoch, testStep=1)
+        if neptune_run:
+            neptune_run['remaining_time'] = remaining_time
+    
+    #saving final model 
+    torch.save(model.state_dict(), os.path.join(model_dir, 'model-{}-final.pt'.format(cfg.model_name)))
+    if neptune_run:
+        neptune_run['model_weights'].track_files(os.path.join(model_dir, 'model-{}-final.pt'.format(cfg.model_name)))
 
 
 if __name__ == '__main__':
