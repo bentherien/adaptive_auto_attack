@@ -72,7 +72,7 @@ def mytest_loader( batch_size,dataframe,datasets,model_name='None'):
     return dataloaders
 
 # margin loss
-def margin_loss(logits,y,i=0,MT=True):
+def margin_loss(logits,y,i=0,MT=True,device=device):
     bs = len(y)
     Y = y.view(-1,1)
     logit_org = logits.gather(1,Y)
@@ -81,7 +81,7 @@ def margin_loss(logits,y,i=0,MT=True):
     LTA = TA.argmax(1,keepdim=True)
     if MT:
         LTA_k = torch.topk(TA,TA.shape[-1],dim=1)
-        LTA_s = torch.tensor([LTA_k[1][s][i%TA.shape[-1]] for s in range(bs)]).view(-1,1).to('cuda')
+        LTA_s = torch.tensor([LTA_k[1][s][i%TA.shape[-1]] for s in range(bs)]).view(-1,1).to(device)
         logit_target = logits.gather(1,LTA_s)
     else:
         logit_target =  logits.gather(1,LTA)
@@ -110,7 +110,8 @@ def lp_norm(x):
 def AAA_white_box(model, X, X_adv, y, epsilon=0.031, step_num=20, ADI_step_num=8,
                   warm = False, bias_ODI=False, random_start = True, w_logit_dir=None, c_logit_dir=None,
                   sorted_logits=None, No_class = None, data_set = None, BIAS_ATK= None,
-                  final_bias_ODI = False, No_epoch = 0, num_class=10, MT=False, Lnorm='Linf', out_re=None):
+                  final_bias_ODI = False, No_epoch = 0, num_class=10, MT=False, Lnorm='Linf', out_re=None,
+                  device=device):
     tbn = 0 # number of  backward propagation
     tfn = 0 # number of  forward propagation
     if data_set=='mnist':
@@ -204,9 +205,9 @@ def AAA_white_box(model, X, X_adv, y, epsilon=0.031, step_num=20, ADI_step_num=8
                 tfn+=X_adv_f.shape[0]
             else:
                 if MT:
-                    loss = margin_loss(model(X_adv_f), y[atk_filed_index],No_epoch,MT=MT).sum()
+                    loss = margin_loss(model(X_adv_f), y[atk_filed_index],No_epoch,MT=MT,device=device).sum()
                 else:
-                    loss = margin_loss(model(X_adv_f), y[atk_filed_index]).sum()
+                    loss = margin_loss(model(X_adv_f), y[atk_filed_index], device=device).sum()
                 tfn+=X_adv_f.shape[0]
         loss.backward()
         tbn+=X_adv_f.shape[0]
@@ -244,7 +245,7 @@ def AAA_white_box(model, X, X_adv, y, epsilon=0.031, step_num=20, ADI_step_num=8
 
         output_ = model(X_adv_f)
         tfn+=X_adv_f.shape[0]
-        output_loss = margin_loss(output_,y_f).squeeze()
+        output_loss = margin_loss(output_,y_f,device=device).squeeze()
         each_max_loss[np_atk_filed_index] = np.where(each_max_loss[np_atk_filed_index]>output_loss.detach().cpu().numpy(),
                                                      each_max_loss[np_atk_filed_index],output_loss.detach().cpu().numpy())
         X_adv[atk_filed_index,:,:,:]= X_adv_f
@@ -321,7 +322,8 @@ def mytest_loader_mem(batch_size,dataframe,datasets,np_ds,model_name='None'):
                              pin_memory=True)
     return dataloaders
 
-def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size, average_num, model_name, data_set="cifar10",
+def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size, 
+                                   average_num, model_name, data_set="cifar10",
                                    Lnorm='Linf', neptune_run=None):#ADDED argument
     # ####  1.Loading datasets  ####
     # if data_set=="mnist":
@@ -424,7 +426,7 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size, av
     clean_acc = natural_acc/len(all_atk_labs)
     print(f"clean acc:{clean_acc:0.4}")
     if neptune_run != None:
-        neptune_run['clean_acc'] = clean_acc
+        neptune_run['AAA/clean_acc'] = clean_acc
 
     out_restart_num = 13
     BIAS_ATK = False
@@ -525,10 +527,10 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size, av
             alpha =1.0;restart_num +=10
 
         if neptune_run != None:
-            neptune_run["alpha"].log(alpha)
-            neptune_run["max_iter"].log(max_iter)
-            neptune_run["adi_iter_num"].log(adi_iter_num)
-            neptune_run["restart_num"].log(restart_num)
+            neptune_run["AAA/alpha"].log(alpha)
+            neptune_run["AAA/max_iter"].log(max_iter)
+            neptune_run["AAA/adi_iter_num"].log(adi_iter_num)
+            neptune_run["AAA/restart_num"].log(restart_num)
 
 
         for r in range(restart_num):
@@ -567,7 +569,7 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size, av
             iter_num = min(max(iter_num,15),(max_iter+adi_iter_num))
 
             if neptune_run != None: #MODIFIED
-                neptune_run["iter_num_in_restart"].log(iter_num) #MODIFIED
+                neptune_run["AAA/iter_num_in_restart"].log(iter_num) #MODIFIED
 
             for i, test_data in (enumerate(data_loader)):
                 bstart = i * batch_size
@@ -588,7 +590,7 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size, av
                         AAA_white_box(model, X, X_input2, y, eps, iter_num, adi_iter_num, WARM, ADI, is_random,
                                       sorted_logits=sorted_logits, No_class=No_class,w_logit_dir = wrong_logits_direct,c_logit_dir=correct_logits_direct,
                                       data_set=data_set, BIAS_ATK=BIAS_ATK,final_bias_ODI =final_odi_atk,No_epoch=No_epoch,num_class=num_class,
-                                      MT=MT,Lnorm=Lnorm,out_re=out_re)
+                                      MT=MT,Lnorm=Lnorm,out_re=out_re,device=device)
                     now_need_atk_index[bstart:bend] = now_need_atk_index[bstart:bend] * atk_filed_index_cold
                     now_max_loss[bstart:bend] = np.where(now_max_loss[bstart:bend]>each_max_loss,now_max_loss[bstart:bend],each_max_loss)
                     used_backward_num +=backward_num
@@ -609,8 +611,8 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size, av
         # START MODIFIED CODE
         robust_acc = not_suc_index.sum()/len(all_atk_labs)
         if neptune_run != None:
-            neptune_run["robust_acc"].log(robust_acc)
-            neptune_run["now_need_atk_num"].log(now_need_atk_num)
+            neptune_run["AAA/robust_acc"].log(robust_acc)
+            neptune_run["AAA/now_need_atk_num"].log(now_need_atk_num)
         # END MODIFIED CODE
 
 class Normalize(nn.Module):
@@ -671,7 +673,7 @@ def main(flag,model_name, ep=8./255,random=True, batch_size=128, average_number=
     device = torch.device("cuda:{}".format(args.gpuid))
     print(device)
     # MODIFIED ENDS 
-
+    model_name='dsdssds'
     stime = datetime.datetime.now()
     print(f"{flag} {model_name}")
     data_set="cifar10"
@@ -1247,12 +1249,10 @@ def main(flag,model_name, ep=8./255,random=True, batch_size=128, average_number=
         elif cfg.difficulty == 'hard':
             sstransformation = cfg.sstransformation_hard
 
-        sstransformation.update({'shape':cfg.image_shape})
-
         dataset_regular, dataset_aug = get_aug_dataset(
                 dataset=cfg.default_dataset, 
                 use_train=False, 
-                data_root_ovr=None, 
+                data_root_ovr='../data', 
                 sstransformation=sstransformation,
                 seed=cfg.seed
             )
@@ -1276,7 +1276,8 @@ def main(flag,model_name, ep=8./255,random=True, batch_size=128, average_number=
 
     # exit(0)
     # ADDED TO ORIGINAL FILE ENDS
-    
+    print(data_set[0].shape,data_set[1].shape)
+    exit(0)
 
 
     model.to("cuda")

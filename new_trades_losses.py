@@ -17,17 +17,16 @@ def l2_norm(x):
     return squared_l2_norm(x).sqrt()
 
 def trades_loss_ORIG(model,
-                x_natural,
-                y,
-                optimizer,
-                neptune_run,
-                step_size=0.003,
-                epsilon=0.031,
-                perturb_steps=10,
-                beta=1.0,
-                distance='l_inf',
-                device_num=0,
-                neptune_run=None):
+                    x_natural,
+                    y,
+                    optimizer,
+                    step_size=0.003,
+                    epsilon=0.031,
+                    perturb_steps=10,
+                    beta=1.0,
+                    distance='l_inf',
+                    device_num=0,
+                    neptune_run=None):
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
     model.eval()
@@ -130,16 +129,16 @@ def select_WX(model, x_natural, y, criterion, device_num):
     return wc10_x
 
 def trades_loss_linfty_u_RT(model,
-                x_natural,
-                y,
-                optimizer,
-                neptune_run,
-                step_size=0.003,
-                epsilon=0.031,
-                perturb_steps=10,
-                beta=1.0,
-                distance='l_inf',
-                device_num=0):
+                            x_natural,
+                            y,
+                            optimizer,
+                            step_size=0.003,
+                            epsilon=0.031,
+                            perturb_steps=10,
+                            beta=1.0,
+                            distance='l_inf',
+                            device_num=0,
+                            neptune_run=None):
     
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
@@ -245,13 +244,13 @@ def trades_loss_RT(model,
                 x_natural,
                 y,
                 optimizer,
-                neptune_run,
                 step_size=0.003,
                 epsilon=0.031,
                 perturb_steps=10,
                 beta=1.0,
                 distance='l_inf',
-                device_num=0):
+                device_num=0,
+                neptune_run=None):
     
     # define KL-loss
     criterion_kl_SST = nn.KLDivLoss(reduce=False)
@@ -282,7 +281,6 @@ def trades_loss_linfty_compose_RT(model,
                         x_natural,
                         y,
                         optimizer,
-                        neptune_run,
                         step_size=0.003,
                         epsilon=0.031,
                         perturb_steps=10,
