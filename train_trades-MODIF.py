@@ -74,7 +74,7 @@ cfg._cfg_dict.update({k:v for k,v in args.__dict__.items() if v != None})
 
 print(cfg)
 
-identifier = "{}_{}_{}".format(cfg.dataset, cfg.trades_loss, cfg.seed)
+identifier = "{}_{}_{}_{}".format(cfg.dataset, cfg.trades_loss, cfg.seed, cfg.beta)
 print(identifier)
 
 if args.no_neptune:
