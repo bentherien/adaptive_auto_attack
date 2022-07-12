@@ -281,7 +281,7 @@ def estimateRemainingTime(trainTime, testTime, epochs, currentEpoch, testStep):
 
 
 
-def test_on_aaa(model,dataset_name,dataset,dataloader,device_num,aaa_config,neptune_run):
+def test_on_aaa(model,dataset_name,dataset,dataloader,device_num,aaa_config,neptune_run,device):
     """Function tests the current model using the AAA attack.
 
     Args:
@@ -311,7 +311,7 @@ def test_on_aaa(model,dataset_name,dataset,dataloader,device_num,aaa_config,nept
                                         figsize=(20,67),
                                         savepath='/tmp/aaa_test_images.png',
                                         cmap=cmap)
-        neptune_run["attack/side_by_side"].upload('/tmp/aaa_test_images.png')
+        neptune_run["AAA/side_by_side"].upload('/tmp/aaa_test_images.png')
     
     print(w10_X.permute(0,2,3,1).shape,w10_Y.shape)
     w10_X, w10_Y = w10_X.permute(0,2,3,1).detach().cpu().numpy(), w10_Y.detach().cpu().numpy()
@@ -341,7 +341,7 @@ def test_on_aaa(model,dataset_name,dataset,dataloader,device_num,aaa_config,nept
 def main():
     # init model, ResNet18() can be also used here for training
     model = get_model(cfg.model_name,device,verbose=cfg.verbose)
-    model.load_state_dict(torch.load( 'model_weights/TRADES/model_mnist_smallcnn.pt'.format(cfg.model_name)))
+    # model.load_state_dict(torch.load( 'model_weights/TRADES/model_mnist_smallcnn.pt'.format(cfg.model_name)))
   
     optimizer = optim.SGD(model.parameters(), lr=cfg.lr, momentum=cfg.momentum, weight_decay=cfg.weight_decay)
     test_time, train_time = [],[]
@@ -401,7 +401,8 @@ def main():
         dataloader=test_loader,
         device_num=cfg.device_num,
         aaa_config=Config.fromfile(cfg.aaa_config),
-        neptune_run=neptune_run
+        neptune_run=neptune_run,
+        device=device
     )
 
 
