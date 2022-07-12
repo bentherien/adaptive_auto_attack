@@ -192,6 +192,8 @@ def AAA_white_box(model, X, X_adv, y, epsilon=0.031, step_num=20, ADI_step_num=8
     when_atk_suc_iter_num = []
     for i in range(ADI_step_num + step_num):
         X_adv_f = X_adv[atk_filed_index,:,:,:]
+        if X_adv_f.shape[0] == 0:
+            break #break when you break the model
         X_f = X[atk_filed_index,:,:,:]
         y_f = y[atk_filed_index]
         X_adv_f = Variable(X_adv_f,requires_grad=True)
@@ -275,6 +277,7 @@ def AAA_white_box(model, X, X_adv, y, epsilon=0.031, step_num=20, ADI_step_num=8
         np_atk_filed_index = atk_filed_index.detach().cpu().numpy()
         if ADI_step_num > 0 and i==ADI_step_num-1:
             odi_atk_suc_num = atk_filed_index.shape[0] - atk_filed_index.float().sum()
+
     atk_acc_num = (model(X_adv).data.max(1)[1] == y.data).float().sum()
     tfn+=X_adv.shape[0]
 
@@ -550,6 +553,10 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
             now_sorted_logits_index = sorted_logits_index[not_suc_need_atk_index]
             fast_init_atk = init_atk.loc[init_atk['need_atk']==1]
             now_need_atk_num = not_suc_need_atk_index.sum()
+            if now_need_atk_num == 0:
+                break
+            else:
+                print(now_need_atk_num)
             now_need_atk_index = np.ones(now_need_atk_num)
             now_max_loss = max_loss[not_suc_need_atk_index]
 
@@ -613,6 +620,8 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
         if neptune_run != None:
             neptune_run["AAA/robust_acc"].log(robust_acc)
             neptune_run["AAA/now_need_atk_num"].log(now_need_atk_num)
+        if now_need_atk_num == 0:
+            break
         # END MODIFIED CODE
 
 class Normalize(nn.Module):
