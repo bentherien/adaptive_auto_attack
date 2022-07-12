@@ -420,7 +420,7 @@ def setAllSeeds(seed):
     random.seed(seed)
     np.random.seed(seed)
 
-def get_aug_dataset(dataset, use_train=False, data_root_ovr=None, sstransformation=dict(max_r=30., max_t=10.,max_s=1.2248,shape=(32,32,3),), seed=1):
+def get_aug_dataset(dataset, use_train=False, data_root_ovr=None, sstransformation=dict(max_r=30., max_t=10.,max_s=1.2248,), seed=1):
     """Function loads a dataset and its human impereceptibly augnmented twin.
 
     args:
@@ -504,3 +504,44 @@ def save_im_and_label(filepath,dataset):
     np.save('{}_X.npy'.format(filepath),torch.stack(ims_X).numpy())
     print("Saving labels to {}".format('{}_Y.npy'.format(filepath)))
     np.save('{}_Y.npy'.format(filepath),torch.stack(ims_Y).numpy())
+
+
+from new_trades_losses import select_WX
+import torch.nn as nn
+
+def get_worst_case_images(dataset,dataloader,model,device_num):
+    w10_X,w10_Y = [],[]
+    criterion_kl_SST = nn.KLDivLoss(reduce=False)
+    for X,Y in dataloader:
+        X = X.cuda(device_num)
+        Y = Y.cuda(device_num)
+
+        w10_X.append(select_WX(model=model, x_natural=X, y=Y, criterion=criterion_kl_SST, device_num=device_num))
+        w10_Y.append(Y)
+        # print(X.shape,Y.shape)
+    w10_X = torch.cat(w10_X,axis=0)
+    w10_Y = torch.cat(w10_Y,axis=0)
+    return w10_X, w10_Y
+
+
+
+def show_reg_aug_side_by_side_numpy(dataset_regular,images_aug,labels,classes,total_plots=40,
+                                    plots_per_row=5,figsize=(20,67),savepath=None,
+                                    cmap='viridis',):
+    """Funtion plots regular and augmented images side by side for comparison."""
+    classes = dataset_regular.classes
+    n = np.ceil(total_plots/plots_per_row).astype(np.int32) * 2
+    fig, axs = plt.subplots(n, plots_per_row, figsize=figsize)
+    for x in range(total_plots):
+        c,r = x % plots_per_row, int(x/plots_per_row) * 2
+        axs[r,c].set_title("Regular | Class: {}".format(classes[labels[x]]))
+        axs[r,c].imshow(dataset_regular[x][0].permute(1,2,0).cpu(),cmap=cmap)
+        
+        r += 1
+        axs[r,c].set_title("Augmented | Class: {}".format(classes[labels[x]]))
+        axs[r,c].imshow(images_aug[x].permute(1,2,0).cpu(),cmap=cmap)
+
+    if savepath:
+        fig.savefig(savepath,bbox_inches='tight',dpi=400)
+    
+    return fig
