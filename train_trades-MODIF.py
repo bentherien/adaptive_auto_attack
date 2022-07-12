@@ -69,12 +69,19 @@ cfg = Config.fromfile(args.config)
 #override via CLI
 cfg._cfg_dict.update({k:v for k,v in args.__dict__.items() if v != None})
 
+print(cfg)
+
+identifier = "{}_{}_{}".format(cfg.dataset, cfg.trades_loss, cfg.seed)
+print(identifier)
+
 if args.no_neptune:
     neptune_run = None
 else:
     cfg_key = Config.fromfile('./keys/api_key.py')
+    
     neptune_run = neptune.init(**cfg_key.neptune_args) 
     neptune_run['config'] = cfg
+    neptune_run['name'] = identifier
     neptune_run['cli_args'] = args
 
 if cfg.trades_loss == 'orig':
@@ -86,11 +93,8 @@ elif cfg.trades_loss == 'linfty_u_RT':
 elif cfg.trades_loss == 'RT':
     trades_loss = trades_loss_RT
 
-
-print(cfg)
-
 # settings
-model_dir = cfg.model_dir
+model_dir = os.path.join(cfg.model_dir, identifier)
 if not os.path.exists(model_dir):
     os.makedirs(model_dir)
 use_cuda = not cfg.no_cuda and torch.cuda.is_available()
@@ -315,12 +319,12 @@ def main():
         print('================================================================')
         test_time.append(time.time()-t1)
 
-        # save checkpoint
-        if epoch % cfg.save_freq == 0:
-            torch.save(model.state_dict(),
-                       os.path.join(model_dir, 'model-{}-epoch{}.pt'.format(cfg.model_name,epoch)))
-            torch.save(optimizer.state_dict(),
-                       os.path.join(model_dir, 'opt-{}-checkpoint_epoch{}.tar'.format(cfg.model_name,epoch)))
+        # # save checkpoint
+        # if epoch % cfg.save_freq == 0:
+        #     torch.save(model.state_dict(),
+        #                os.path.join(model_dir, 'model-{}-epoch{}.pt'.format(cfg.model_name,epoch)))
+        #     torch.save(optimizer.state_dict(),
+        #                os.path.join(model_dir, 'opt-{}-checkpoint_epoch{}.tar'.format(cfg.model_name,epoch)))
 
         remaining_time = estimateRemainingTime(train_time, test_time, epochs=cfg.epochs+1, currentEpoch=epoch, testStep=1)
         if neptune_run:
