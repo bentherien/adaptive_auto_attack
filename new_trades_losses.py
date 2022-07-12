@@ -27,6 +27,7 @@ def trades_loss_ORIG(model,
                     distance='l_inf',
                     device_num=0,
                     neptune_run=None):
+
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
     model.eval()
@@ -107,8 +108,10 @@ def select_WX(model, x_natural, y, criterion, device_num):
     with torch.no_grad():
         # Shape: [10, bs, channels, width, height]
         affine_x_10 = torch.zeros((10,) + x_natural.shape).cuda(device_num)
+        W = x_natural.shape[2]
+        H = x_natural.shape[3]
         losses = torch.zeros(10, x_natural.shape[0]).cuda(device_num)
-        affine_T = T.RandomAffine(degrees=(-30, 30), translate=(0.1, 0.1), scale=(1, 1), interpolation=T.InterpolationMode.BILINEAR)
+        affine_T = T.RandomAffine(degrees=(-30, 30), translate=(3/W, 3/H), scale=(1, 1), interpolation=T.InterpolationMode.BILINEAR)
         for i in range(10):
             # Apply random affine transformation to each image in the batch
             affine_x = torch.cat([affine_T(x_natural[j]).unsqueeze(0) for j in range(len(x_natural))], dim=0)
@@ -206,15 +209,14 @@ def trades_loss_linfty_u_RT(model,
     # index 0 corresponds to linfty perturbation and index 1 corresponds to spatial perturbation
     losses = torch.zeros(2, x_linfty_adv.shape[0]).cuda(device_num)
 
-    losses[0] = torch.sum(criterion(F.log_softmax(model(x_linfty_adv), dim=1),
+    losses[0] = torch.sum(criterion_kl_SST(F.log_softmax(model(x_linfty_adv), dim=1),
                             F.softmax(model(x_natural), dim=1)), dim=1)
-    losses[1] = torch.sum(criterion(F.log_softmax(model(x_spatial_adv), dim=1),
+    losses[1] = torch.sum(criterion_kl_SST(F.log_softmax(model(x_spatial_adv), dim=1),
                             F.softmax(model(x_natural), dim=1)), dim=1)
 
     best_perturbation_index = torch.argmax(losses, dim=0)
 
     # Should use torch gather here
-    affine_x_10 = torch.transpose(affine_x_10, 0, 1)
     x_adv = torch.zeros_like(x_natural)
     for i in range(len(x_natural)):
         if best_perturbation_index[i] == 0:
@@ -224,7 +226,7 @@ def trades_loss_linfty_u_RT(model,
 
     if neptune_run:
         # proportion of adversarial images selected by max strategy that are l_infty perturbations
-        proportion_linfty = torch.mean(best_perturbation_index == 0)
+        proportion_linfty = 1 - torch.mean(best_perturbation_index.float())
         neptune_run['proportion_linfty'].log(proportion_linfty)
 
     ### MODIFICATION END    
@@ -236,6 +238,11 @@ def trades_loss_linfty_u_RT(model,
     loss_natural = F.cross_entropy(logits, y)
     loss_robust = (1.0 / batch_size) * criterion_kl(F.log_softmax(model(x_adv), dim=1),
                                                     F.softmax(model(x_natural), dim=1))
+    
+    if neptune_run:
+        neptune_run['training_robust_loss'].log(loss_robust.item())
+        neptune_run['training_natural_loss'].log(loss_natural.item())
+    
     loss = loss_natural + beta * loss_robust
     return loss
 
@@ -254,6 +261,7 @@ def trades_loss_RT(model,
     
     # define KL-loss
     criterion_kl_SST = nn.KLDivLoss(reduce=False)
+    criterion_kl = nn.KLDivLoss(size_average=False)
     model.eval()
     batch_size = len(x_natural)
     # generate adversarial example
@@ -274,20 +282,25 @@ def trades_loss_RT(model,
     loss_natural = F.cross_entropy(logits, y)
     loss_robust = (1.0 / batch_size) * criterion_kl(F.log_softmax(model(x_adv), dim=1),
                                                     F.softmax(model(x_natural), dim=1))
+    
+    if neptune_run:
+        neptune_run['training_robust_loss'].log(loss_robust.item())
+        neptune_run['training_natural_loss'].log(loss_natural.item())
+    
     loss = loss_natural + beta * loss_robust
     return loss
 
 def trades_loss_linfty_compose_RT(model,
-                        x_natural,
-                        y,
-                        optimizer,
-                        step_size=0.003,
-                        epsilon=0.031,
-                        perturb_steps=10,
-                        beta=1.0,
-                        distance='l_inf',
-                        device_num=0,
-                        neptune_run=None):
+                                x_natural,
+                                y,
+                                optimizer,
+                                step_size=0.003,
+                                epsilon=0.031,
+                                perturb_steps=10,
+                                beta=1.0,
+                                distance='l_inf',
+                                device_num=0,
+                                neptune_run=None):
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
     criterion_kl_SST = nn.KLDivLoss(reduce=False)
