@@ -17,3 +17,5 @@ _deprecated_a1_ben/mnist_adv/*
 *.pt
 *.tar
 TRADES/data
+
+bit_model_dir/*

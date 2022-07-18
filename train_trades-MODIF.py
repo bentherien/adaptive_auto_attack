@@ -14,6 +14,7 @@ import torch.optim as optim
 import neptune.new as neptune
 
 sys.path.append("./TRADES")
+sys.path.append("./big_transfer")
 
 from mmcv import Config
 from torchvision import datasets, transforms
@@ -23,8 +24,9 @@ from models.net_mnist import *
 from models.small_cnn import *
 from augmentation_tools import get_worst_case_images, show_reg_aug_side_by_side_numpy
 from new_trades_losses import (trades_loss_ORIG, trades_loss_linfty_compose_RT, 
-                               trades_loss_linfty_u_RT, trades_loss_RT,)
+                               trades_loss_linfty_u_RT, trades_loss_RT, ST_trades_loss_linfty_compose_RT)
 from proj_Adaptive_Auto_Attack_main_PROJECT import Adaptive_Auto_white_box_attack
+from bit_pytorch import models as bit_models
 
 parser = argparse.ArgumentParser(description='PyTorch TRADES Adversarial Training')
 parser.add_argument('--batch-size', '-bs', type=int, #default=128, 
@@ -64,6 +66,10 @@ parser.add_argument('--config', '-c', default='./config/defenses/default_runtime
                     type=str, metavar='CFG', help='Whether to use neptune logging or not')
 parser.add_argument('--device-num', '-dn', default=0, 
                     type=int, required=True, help='The number of the GPU to use')
+parser.add_argument('--student-teacher', '-st', action='store_true', default=False,
+                    help='use student teacher training training')
+parser.add_argument('--teacher-file-path', '-tfp',# default='./config/defenses/default_runtime.py', 
+                    type=str, metavar='CFG', help='filepath to the teacher model')
 
 
 args = parser.parse_args()
@@ -91,6 +97,8 @@ if cfg.trades_loss == 'orig':
     trades_loss = trades_loss_ORIG
 elif cfg.trades_loss == 'linfty_compose_RT':
     trades_loss = trades_loss_linfty_compose_RT
+elif cfg.trades_loss == 'ST_linfty_compose_RT':
+    trades_loss = ST_trades_loss_linfty_compose_RT
 elif cfg.trades_loss == 'linfty_u_RT':
     trades_loss = trades_loss_linfty_u_RT
 elif cfg.trades_loss == 'RT':
@@ -104,6 +112,9 @@ use_cuda = not cfg.no_cuda and torch.cuda.is_available()
 torch.manual_seed(cfg.seed)
 device = torch.device("cuda:{}".format(cfg.device_num) if use_cuda else "cpu")
 kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
+
+
+
 
 
 
@@ -133,6 +144,25 @@ else:
 
 
 
+if cfg.student_teacher: 
+    print(len(trainset.classes))
+    teacher_model = bit_models.KNOWN_MODELS[cfg.teacher_model_name](head_size=len(trainset.classes), zero_head=True)
+    teacher_model.load_from(np.load(f"bit_model_dir/{cfg.teacher_model_name}.npz"))
+    teacher_model = torch.nn.DataParallel(teacher_model)
+
+    checkpoint = torch.load(f"{cfg.teacher_file_path}", map_location="cpu")
+    print(f"Found saved model to resume from at '{cfg.teacher_file_path}'")
+    teacher_model.load_state_dict(checkpoint["model"])
+    teacher_model = teacher_model.to(device)
+    for param in teacher_model.parameters():
+        param.requires_grad = False
+
+    # from torchsummary import summary
+    # s = summary(teacher_model,trainset[0][0].shape)
+else:
+    teacher_model = None
+
+# exit(0) 
 
 
 
@@ -153,10 +183,12 @@ def train(cfg, model, device, train_loader, optimizer, epoch, device_num, neptun
                            perturb_steps=cfg.num_steps,
                            beta=cfg.beta,
                            device_num=device_num,
-                           neptune_run=neptune_run)
+                           neptune_run=neptune_run,
+                           teacher=teacher_model)
 
         # print(loss)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
         if neptune_run:

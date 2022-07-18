@@ -26,7 +26,8 @@ def trades_loss_ORIG(model,
                     beta=1.0,
                     distance='l_inf',
                     device_num=0,
-                    neptune_run=None):
+                    neptune_run=None,
+                    teacher=None):
 
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
@@ -141,7 +142,8 @@ def trades_loss_linfty_u_RT(model,
                             beta=1.0,
                             distance='l_inf',
                             device_num=0,
-                            neptune_run=None):
+                            neptune_run=None,
+                            teacher=None):
     
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
@@ -257,7 +259,8 @@ def trades_loss_RT(model,
                 beta=1.0,
                 distance='l_inf',
                 device_num=0,
-                neptune_run=None):
+                neptune_run=None,
+                teacher=None):
     
     # define KL-loss
     criterion_kl_SST = nn.KLDivLoss(reduce=False)
@@ -300,7 +303,8 @@ def trades_loss_linfty_compose_RT(model,
                                 beta=1.0,
                                 distance='l_inf',
                                 device_num=0,
-                                neptune_run=None):
+                                neptune_run=None,
+                                teacher=None):
     # define KL-loss
     criterion_kl = nn.KLDivLoss(size_average=False)
     criterion_kl_SST = nn.KLDivLoss(reduce=False)
@@ -372,3 +376,109 @@ def trades_loss_linfty_compose_RT(model,
         neptune_run['training_natural_loss'].log(loss_natural.item())
     loss = loss_natural + loss_robust
     return loss
+
+
+
+
+
+
+
+
+def ST_trades_loss_linfty_compose_RT(model,
+                                x_natural,
+                                y,
+                                optimizer,
+                                step_size=0.003,
+                                epsilon=0.031,
+                                perturb_steps=10,
+                                beta=1.0,
+                                distance='l_inf',
+                                device_num=0,
+                                neptune_run=None,
+                                teacher=None):
+    # define KL-loss
+    criterion_kl = nn.KLDivLoss(size_average=False)
+    criterion_kl_SST = nn.KLDivLoss(reduce=False)
+    model.eval()
+    batch_size = len(x_natural)
+    # generate adversarial example
+
+    ### MODIFICATION START
+
+    x_adv_start = select_WX(model, x_natural, y, criterion_kl_SST, device_num)
+
+    ### MODIFICATION_END
+
+    x_adv = x_adv_start.detach() + 0.001 * torch.randn(x_adv_start.shape).cuda(device_num).detach()
+    if distance == 'l_inf':
+        for _ in range(perturb_steps):
+            x_adv.requires_grad_()
+            with torch.enable_grad():
+                loss_kl = criterion_kl(F.log_softmax(model(x_adv), dim=1),
+                                       F.softmax(model(x_adv_start), dim=1))
+            grad = torch.autograd.grad(loss_kl, [x_adv])[0]
+            x_adv = x_adv.detach() + step_size * torch.sign(grad.detach())
+            x_adv = torch.min(torch.max(x_adv, x_adv_start - epsilon), x_adv_start + epsilon)
+            x_adv = torch.clamp(x_adv, 0.0, 1.0)
+    elif distance == 'l_2':
+        delta = 0.001 * torch.randn(x_adv_start.shape).cuda(device_num).detach()
+        delta = Variable(delta.data, requires_grad=True)
+
+        # Setup optimizers
+        optimizer_delta = optim.SGD([delta], lr=epsilon / perturb_steps * 2)
+
+        for _ in range(perturb_steps):
+            adv = x_adv_start + delta
+
+            # optimize
+            optimizer_delta.zero_grad()
+            with torch.enable_grad():
+                loss = (-1) * criterion_kl(F.log_softmax(model(adv), dim=1),
+                                           F.softmax(model(x_adv_start), dim=1))
+            loss.backward()
+            # renorming gradient
+            grad_norms = delta.grad.view(batch_size, -1).norm(p=2, dim=1)
+            delta.grad.div_(grad_norms.view(-1, 1, 1, 1))
+            # avoid nan or inf if gradient is 0
+            if (grad_norms == 0).any():
+                delta.grad[grad_norms == 0] = torch.randn_like(delta.grad[grad_norms == 0])
+            optimizer_delta.step()
+
+            # projection
+            delta.data.add_(x_adv_start)
+            delta.data.clamp_(0, 1).sub_(x_adv_start)
+            delta.data.renorm_(p=2, dim=0, maxnorm=epsilon)
+        x_adv = Variable(x_adv_start + delta, requires_grad=False)
+    else:
+        x_adv = torch.clamp(x_adv, 0.0, 1.0)
+    model.train()
+
+    x_adv = Variable(torch.clamp(x_adv, 0.0, 1.0), requires_grad=False)
+    # zero gradient
+    optimizer.zero_grad()
+    # calculate robust loss
+
+    # smx = torch.nn.Softmax(dim=1)
+    logits = model(x_natural)
+    with torch.no_grad():
+        teacher_pred = F.softmax(teacher(x_natural), dim=1)
+    
+    # print(logits)
+    # print(teacher_pred)
+    # print(logits.shape,teacher_pred.shape)
+    loss_natural = criterion_kl(F.log_softmax(logits, dim=1), teacher_pred)
+    # print(loss_natural,loss_natural.shape)
+    # exit(0)
+    # loss_natural = F.cross_entropy(logits, y)
+
+
+
+    loss_robust = (1.0 / batch_size) * criterion_kl(F.log_softmax(model(x_adv), dim=1),
+                                                    F.softmax(model(x_natural), dim=1))
+    loss_robust = beta * loss_robust
+    if neptune_run:
+        neptune_run['training_robust_loss'].log(loss_robust.item())
+        neptune_run['training_natural_loss'].log(loss_natural.item())
+    loss = loss_natural + loss_robust
+    return loss
+
