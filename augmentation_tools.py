@@ -506,24 +506,36 @@ def save_im_and_label(filepath,dataset):
     np.save('{}_Y.npy'.format(filepath),torch.stack(ims_Y).numpy())
 
 
-from new_trades_losses import select_WX
+from new_trades_losses import select_W10, select_gridsearch
 import torch.nn as nn
 
-def get_worst_case_images(dataset,dataloader,model,device_num):
+def get_w10_images(dataset,dataloader,model,device_num):
     w10_X,w10_Y = [],[]
     criterion_kl_SST = nn.KLDivLoss(reduce=False)
     for X,Y in dataloader:
         X = X.cuda(device_num)
         Y = Y.cuda(device_num)
 
-        w10_X.append(select_WX(model=model, x_natural=X, y=Y, criterion=criterion_kl_SST, device_num=device_num))
+        w10_X.append(select_W10(model=model, x_natural=X, y=Y, criterion=criterion_kl_SST, device_num=device_num))
         w10_Y.append(Y)
         # print(X.shape,Y.shape)
     w10_X = torch.cat(w10_X,axis=0)
     w10_Y = torch.cat(w10_Y,axis=0)
     return w10_X, w10_Y
 
+def get_gridsearch_images(dataset, dataloader, model, device_num):
+    w10_X,w10_Y = [],[]
+    criterion_kl_SST = nn.KLDivLoss(reduce=False)
+    for X,Y in dataloader:
+        X = X.cuda(device_num)
+        Y = Y.cuda(device_num)
 
+        w10_X.append(select_gridsearch(model=model, x_natural=X, y=Y, criterion=criterion_kl_SST, device_num=device_num))
+        w10_Y.append(Y)
+        # print(X.shape,Y.shape)
+    w10_X = torch.cat(w10_X,axis=0)
+    w10_Y = torch.cat(w10_Y,axis=0)
+    return w10_X, w10_Y
 
 def show_reg_aug_side_by_side_numpy(dataset_regular,images_aug,labels,classes,total_plots=40,
                                     plots_per_row=5,figsize=(20,67),savepath=None,

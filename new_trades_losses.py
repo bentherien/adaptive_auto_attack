@@ -1,5 +1,7 @@
 
 import torch
+from tqdm import tqdm
+import numpy as np
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -92,8 +94,42 @@ def trades_loss_ORIG(model,
     loss = loss_natural + loss_robust
     return loss
 
+def select_gridsearch(model, x_natural, y, criterion, device_num):
+    with torch.no_grad():
+        W = x_natural.shape[2]
+        H = x_natural.shape[3]
+        
+        rotation_grid = list(np.linspace(-30, 30, 31))
+        translation_x_grid = list(np.linspace(-3/W, 3/W, 5))
+        translation_y_grid = list(np.linspace(-3/H, 3/H, 5))
 
-def select_WX(model, x_natural, y, criterion, device_num):
+        x_adv = torch.zeros_like(x_natural)
+        for i in tqdm(range(len(x_natural))):
+            best_loss = float('-inf')
+            best_spatial_x = torch.zeros_like(x_natural[i])
+            for rot in rotation_grid:
+                for trans_x in translation_x_grid:
+                    for trans_y in translation_y_grid:
+                        x_spatial = T.functional.affine(x_natural[i], 
+                                            angle= rot, 
+                                            translate= [trans_x, trans_y], 
+                                            scale= 1, 
+                                            shear= 0, 
+                                            interpolation= T.InterpolationMode.BILINEAR, 
+                                            fill= 0)
+
+                        loss = criterion(F.log_softmax(model(x_spatial.unsqueeze(0)), dim=1), F.softmax(model(x_natural[i].unsqueeze(0)), dim=1))
+                        
+                        if loss > best_loss:
+                            best_loss = loss
+                            best_spatial_x = x_spatial
+                        
+            x_adv[i] = best_spatial_x
+
+    return x_adv
+
+
+def select_W10(model, x_natural, y, criterion, device_num):
     """
     Given a batch of inputs, this method selects the worst of 
     10 uniformly sampled spatial transformations.
@@ -152,7 +188,7 @@ def trades_loss_linfty_u_RT(model,
 
     ### MODIFICATION START
 
-    x_spatial_adv = select_WX(model, x_natural, y, criterion_kl_SST, device_num)
+    x_spatial_adv = select_W10(model, x_natural, y, criterion_kl_SST, device_num)
 
     ### MODIFICATION_END
 
@@ -268,7 +304,7 @@ def trades_loss_RT(model,
 
     ### MODIFICATION START
 
-    x_adv = select_WX(model, x_natural, y, criterion_kl_SST, device_num)
+    x_adv = select_W10(model, x_natural, y, criterion_kl_SST, device_num)
 
     ### MODIFICATION_END
     
@@ -310,7 +346,7 @@ def trades_loss_linfty_compose_RT(model,
 
     ### MODIFICATION START
 
-    x_adv_start = select_WX(model, x_natural, y, criterion_kl_SST, device_num)
+    x_adv_start = select_W10(model, x_natural, y, criterion_kl_SST, device_num)
 
     ### MODIFICATION_END
 

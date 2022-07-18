@@ -15,3 +15,5 @@ model_dir='./saved_models'
 model_name='SmallCNN'
 save_freq=5
 dataset='MNIST'
+aaa_config='config/attack/mnist/default_aaa_mnist.py'
+pgd_config='config/attack/mnist/default_pgd_mnist.py'
