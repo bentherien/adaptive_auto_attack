@@ -166,7 +166,7 @@ else:
 
 
 
-def train(cfg, model, device, train_loader, optimizer, epoch, device_num, neptune_run):
+def train(cfg, model, device, train_loader, optimizer, epoch, device_num, neptune_run, teacher_model):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
@@ -394,7 +394,7 @@ def main():
             neptune_run['learning_rate'].log(lr_)
 
         # adversarial training
-        train(cfg, model, device, train_loader, optimizer, epoch, cfg.device_num, neptune_run)
+        train(cfg, model, device, train_loader, optimizer, epoch, cfg.device_num, neptune_run, teacher_model)
 
         train_time.append(time.time()-t1)
         t1 = time.time()
