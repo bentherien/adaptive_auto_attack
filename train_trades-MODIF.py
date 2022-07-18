@@ -23,7 +23,7 @@ from models.net_mnist import *
 from models.small_cnn import *
 from augmentation_tools import get_worst_case_images, show_reg_aug_side_by_side_numpy
 from new_trades_losses import (trades_loss_ORIG, trades_loss_linfty_compose_RT, 
-                               trades_loss_linfty_u_RT, trades_loss_RT,)
+                               trades_loss_linfty_u_RT, trades_loss_RT,trades_loss_RT_and_linfty_and_composition,)
 from proj_Adaptive_Auto_Attack_main_PROJECT import Adaptive_Auto_white_box_attack
 
 parser = argparse.ArgumentParser(description='PyTorch TRADES Adversarial Training')
@@ -89,6 +89,8 @@ else:
 
 if cfg.trades_loss == 'orig':
     trades_loss = trades_loss_ORIG
+elif cfg.trades_loss == 'RT_and_linfty_and_linfty_compose_RT':
+    trades_loss = trades_loss_RT_and_linfty_and_composition
 elif cfg.trades_loss == 'linfty_compose_RT':
     trades_loss = trades_loss_linfty_compose_RT
 elif cfg.trades_loss == 'linfty_u_RT':

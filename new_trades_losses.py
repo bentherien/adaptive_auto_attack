@@ -372,3 +372,121 @@ def trades_loss_linfty_compose_RT(model,
         neptune_run['training_natural_loss'].log(loss_natural.item())
     loss = loss_natural + loss_robust
     return loss
+
+
+def get_adv_training_examples(x_adv_start,criterion_kl,model,distance,device_num,
+                              perturb_steps,epsilon,step_size):
+    """returns adversarial images to train on"""
+    
+    x_adv = x_adv_start.detach() + 0.001 * torch.randn(x_adv_start.shape).cuda(device_num).detach()
+    if distance == 'l_inf':
+        for _ in range(perturb_steps):
+            x_adv.requires_grad_()
+            with torch.enable_grad():
+                loss_kl = criterion_kl(F.log_softmax(model(x_adv), dim=1),
+                                       F.softmax(model(x_adv_start), dim=1))
+            grad = torch.autograd.grad(loss_kl, [x_adv])[0]
+            x_adv = x_adv.detach() + step_size * torch.sign(grad.detach())
+            x_adv = torch.min(torch.max(x_adv, x_adv_start - epsilon), x_adv_start + epsilon)
+            x_adv = torch.clamp(x_adv, 0.0, 1.0)
+    elif distance == 'l_2':
+        delta = 0.001 * torch.randn(x_adv_start.shape).cuda(device_num).detach()
+        delta = Variable(delta.data, requires_grad=True)
+
+        # Setup optimizers
+        optimizer_delta = optim.SGD([delta], lr=epsilon / perturb_steps * 2)
+
+        for _ in range(perturb_steps):
+            adv = x_adv_start + delta
+
+            # optimize
+            optimizer_delta.zero_grad()
+            with torch.enable_grad():
+                loss = (-1) * criterion_kl(F.log_softmax(model(adv), dim=1),
+                                           F.softmax(model(x_adv_start), dim=1))
+            loss.backward()
+            # renorming gradient
+            grad_norms = delta.grad.view(batch_size, -1).norm(p=2, dim=1)
+            delta.grad.div_(grad_norms.view(-1, 1, 1, 1))
+            # avoid nan or inf if gradient is 0
+            if (grad_norms == 0).any():
+                delta.grad[grad_norms == 0] = torch.randn_like(delta.grad[grad_norms == 0])
+            optimizer_delta.step()
+
+            # projection
+            delta.data.add_(x_adv_start)
+            delta.data.clamp_(0, 1).sub_(x_adv_start)
+            delta.data.renorm_(p=2, dim=0, maxnorm=epsilon)
+        x_adv = Variable(x_adv_start + delta, requires_grad=False)
+    else:
+        x_adv = torch.clamp(x_adv, 0.0, 1.0)
+    model.train()
+
+    x_adv = Variable(torch.clamp(x_adv, 0.0, 1.0), requires_grad=False)
+    return x_adv
+
+def trades_loss_RT_and_linfty_and_composition(model,
+                                x_natural,
+                                y,
+                                optimizer,
+                                step_size=0.003,
+                                epsilon=0.031,
+                                perturb_steps=10,
+                                beta=1.0,
+                                distance='l_inf',
+                                device_num=0,
+                                neptune_run=None):
+    """modified trades loss which includes RT and composition components"""
+    # define KL-loss
+    criterion_kl = nn.KLDivLoss(size_average=False)
+    criterion_kl_SST = nn.KLDivLoss(reduce=False)
+    model.eval()
+    batch_size = len(x_natural)
+    # generate adversarial example
+
+    ### MODIFICATION START
+
+    x_adv_start = select_WX(model, x_natural, y, criterion_kl_SST, device_num)
+
+    ### MODIFICATION_END
+
+    x_adv_both = get_adv_training_examples(torch.cat([x_adv_start,x_natural],dim=0),
+                                           criterion_kl,model,distance,device_num,
+                                           perturb_steps,epsilon,step_size)
+
+    x_adv_pgd, x_adv_comp = x_adv_both[:x_adv_start.size(0),...], x_adv_both[x_adv_start.size(0):,...]
+
+
+    assert x_adv_pgd.shape == x_adv_comp.shape
+
+    # x_adv_comp = get_adv_training_examples(x_adv_start,criterion_kl,model,distance,device_num,
+    #                                        perturb_steps,epsilon,step_size)
+    # x_adv_pgd = get_adv_training_examples(x_natural,criterion_kl,model,distance,device_num,
+    #                                       perturb_steps,epsilon,step_size)
+
+
+    # zero gradient
+    optimizer.zero_grad()
+    # calculate robust loss
+    logits = model(x_natural)
+    softmax_nat =  F.softmax(logits, dim=1)
+    loss_natural = F.cross_entropy(logits, y)
+    loss_robust_pdg = (1.0 / batch_size) * criterion_kl(F.log_softmax(model(x_adv_pgd), dim=1),
+                                                        softmax_nat)
+
+    loss_robust_rt = (1.0 / batch_size) * criterion_kl(F.log_softmax(model(x_adv_start), dim=1),
+                                                       softmax_nat)
+
+    loss_robust_comp = (1.0 / batch_size) * criterion_kl(F.log_softmax(model(x_adv_comp), dim=1),
+                                                         softmax_nat)
+
+    loss_robust = beta/3 * (loss_robust_pdg + loss_robust_rt + loss_robust_comp)
+    if neptune_run:
+        neptune_run['training_robust_loss'].log(loss_robust.item())
+        neptune_run['training_natural_loss'].log(loss_natural.item())
+    loss = loss_natural + loss_robust
+    return loss    
+
+
+
+
