@@ -193,6 +193,7 @@ def AAA_white_box(model, X, X_adv, y, epsilon=0.031, step_num=20, ADI_step_num=8
     for i in range(ADI_step_num + step_num):
         X_adv_f = X_adv[atk_filed_index,:,:,:]
         if X_adv_f.shape[0] == 0:
+            broke_aaa = True
             break #break when you break the model
         X_f = X[atk_filed_index,:,:,:]
         y_f = y[atk_filed_index]
@@ -356,6 +357,8 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
 
     # MODIFIED CODE START
 
+    broke_aaa = False
+
     img_idx = [x for x in range(len(data_set[1]))]
     label = data_set[1]
     all_atk_labs = label
@@ -433,11 +436,11 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
         X_adv_batches.append(X_adv_batch)
     
     tot_X_adv = torch.cat(X_adv_batches, dim=0)
-    print("Shape of adversarial examples: ", tot_X_adv.shape)
+    # print("Shape of adversarial examples: ", tot_X_adv.shape)
         
     max_loss[~not_suc_index]= np.ones((~not_suc_index).sum())
     clean_acc = natural_acc/len(all_atk_labs)
-    print(f"clean acc:{clean_acc:0.4}")
+    # print(f"clean acc:{clean_acc:0.4}")
     if neptune_run != None:
         neptune_run['AAA/clean_acc'] = clean_acc
 
@@ -464,8 +467,8 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
                 wrong_logits_direct += total_odi_distribution[i,num_class-i-1]
                 correct_logits_direct += total_odi_distribution[i,num_class-1]
             # print(total_odi_distribution)
-            print(f"{model_name} ##################### wrong_dire:{wrong_logits_direct:0.4} "
-                  f"correct_dire:{correct_logits_direct:0.4} ###################")
+            # print(f"{model_name} ##################### wrong_dire:{wrong_logits_direct:0.4} "
+            #       f"correct_dire:{correct_logits_direct:0.4} ###################")
         if out_re >2:
             if total_adi_atk_suc_num<0.05 * restart_1_need_atk_num:
                 BIAS_ATK = False
@@ -564,9 +567,11 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
             fast_init_atk = init_atk.loc[init_atk['need_atk']==1]
             now_need_atk_num = not_suc_need_atk_index.sum()
             if now_need_atk_num == 0:
+                broke_aaa = True
                 break
             else:
-                print(now_need_atk_num)
+                luke = 1
+                # print(now_need_atk_num)
             now_need_atk_index = np.ones(now_need_atk_num)
             
             ### LUKE
@@ -631,10 +636,10 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
             ### LUKE
             tot_X_adv[not_suc_need_atk_index] = now_need_atk_X_adv
 
-            print(f'No.{len(acc_curve)} clean_acc: {clean_acc:0.4} robust acc: {not_suc_index.sum()/len(all_atk_labs):0.4} used_bp_num: {used_backward_num} '
-                  f'used_fp_num: {total_fn} now_atk_num: {now_need_atk_num} now_correct_num: {robust_acc_oneshot} ')
+            # print(f'No.{len(acc_curve)} clean_acc: {clean_acc:0.4} robust acc: {not_suc_index.sum()/len(all_atk_labs):0.4} used_bp_num: {used_backward_num} '
+            #       f'used_fp_num: {total_fn} now_atk_num: {now_need_atk_num} now_correct_num: {robust_acc_oneshot} ')
             acc_curve.append(f"{not_suc_index.sum()/len(all_atk_labs):0.4}")
-            print(acc_curve)
+            # print(acc_curve)
 
         # START MODIFIED CODE
         robust_acc = not_suc_index.sum()/len(all_atk_labs)
@@ -642,9 +647,10 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
             neptune_run["AAA/robust_acc"].log(robust_acc)
             neptune_run["AAA/now_need_atk_num"].log(now_need_atk_num)
         if now_need_atk_num == 0:
+            broke_aaa = True
             break
     # END MODIFIED CODE
-    return tot_X_adv, robust_acc
+    return tot_X_adv, robust_acc, broke_aaa
 
 class Normalize(nn.Module):
     def __init__(self, mean, std):
@@ -702,11 +708,11 @@ def main(flag,model_name, ep=8./255,random=True, batch_size=128, average_number=
 
     args = pa()
     device = torch.device("cuda:{}".format(args.gpuid))
-    print(device)
+    # print(device)
     # MODIFIED ENDS 
     model_name='dsdssds'
     stime = datetime.datetime.now()
-    print(f"{flag} {model_name}")
+    # print(f"{flag} {model_name}")
     data_set="cifar10"
     Lnorm="Linf"
     if model_name=="TRADES":
@@ -1261,7 +1267,7 @@ def main(flag,model_name, ep=8./255,random=True, batch_size=128, average_number=
     cfg = Config.fromfile(args.config)
     # print(cfg)
 
-    pprint.pprint(cfg)
+    # pprint.pprint(cfg)
     
 
     if args.no_neptune:
@@ -1307,7 +1313,7 @@ def main(flag,model_name, ep=8./255,random=True, batch_size=128, average_number=
 
     # exit(0)
     # ADDED TO ORIGINAL FILE ENDS
-    print(data_set[0].shape,data_set[1].shape)
+    # print(data_set[0].shape,data_set[1].shape)
     exit(0)
 
 
@@ -1318,7 +1324,7 @@ def main(flag,model_name, ep=8./255,random=True, batch_size=128, average_number=
                                    data_set=data_set,Lnorm=Lnorm,neptune_run=neptune_run)
 
     etime = datetime.datetime.now()
-    print(f'use time:{etime-stime}s')
+    # print(f'use time:{etime-stime}s')
 
 
 

@@ -96,6 +96,7 @@ def trades_loss_ORIG(model,
 
 def select_gridsearch(model, x_natural, y, criterion, device_num):
     with torch.no_grad():
+        model.eval()
         W = x_natural.shape[2]
         H = x_natural.shape[3]
 

@@ -23,7 +23,7 @@ from models.small_cnn import *
 from new_trades_losses import (trades_loss_ORIG, trades_loss_linfty_compose_RT, 
                                trades_loss_linfty_u_RT, trades_loss_RT,)
 from augmentation_tools import get_gridsearch_images
-from attacks import pgd, pgd_compose_RT, pgd_union_RT, aaa_compose_RT
+from attacks import pgd, pgd_compose_RT, pgd_union_RT, aaa_compose_RT, aaa_union_RT
 
 def get_model(model_name,device,verbose=False):
     if model_name == 'SmallCNN':
@@ -101,18 +101,6 @@ X_rtgs, Y = get_gridsearch_images(testset, test_loader, model, cfg.device_num)
 X_rtgs = X_rtgs.detach().cpu()
 Y = Y.detach().cpu()
 
-aaa_compose_RT(
-        model=model,
-        X_rtgs=X_rtgs,
-        Y=Y,
-        dataset_name=cfg.dataset,
-        dataset=testset,
-        device_num=cfg.device_num,
-        aaa_config=Config.fromfile(cfg.aaa_config),
-        neptune_run=neptune_run,
-        device=device
-)
-
 # pgd_compose_RT(
 #         model=model,
 #         X_rtgs=X_rtgs,
@@ -121,18 +109,6 @@ aaa_compose_RT(
 #         dataset=testset,
 #         device_num=cfg.device_num,
 #         pgd_config=Config.fromfile(cfg.pgd_config),
-#         neptune_run=neptune_run,
-#         device=device
-# )
-
-# print("Evaluating aaa union w10")
-# aaa_union_gridsearch(
-#         model=model,
-#         dataset_name=cfg.dataset,
-#         dataset=testset,
-#         dataloader=test_loader,
-#         device_num=cfg.device_num,
-#         aaa_config=Config.fromfile(cfg.aaa_config),
 #         neptune_run=neptune_run,
 #         device=device
 # )
@@ -146,6 +122,31 @@ aaa_compose_RT(
 #         dataloader=test_loader,
 #         device_num=cfg.device_num,
 #         pgd_config=Config.fromfile(cfg.pgd_config),
+#         neptune_run=neptune_run,
+#         device=device
+# )
+
+aaa_union_RT(
+        model=model,
+        X_rtgs=X_rtgs,
+        Y=Y,
+        dataset_name=cfg.dataset,
+        dataset=testset,
+        dataloader=test_loader,
+        device_num=cfg.device_num,
+        aaa_config=Config.fromfile(cfg.aaa_config),
+        neptune_run=neptune_run,
+        device=device
+)
+
+# aaa_compose_RT(
+#         model=model,
+#         X_rtgs=X_rtgs,
+#         Y=Y,
+#         dataset_name=cfg.dataset,
+#         dataset=testset,
+#         device_num=cfg.device_num,
+#         aaa_config=Config.fromfile(cfg.aaa_config),
 #         neptune_run=neptune_run,
 #         device=device
 # )
