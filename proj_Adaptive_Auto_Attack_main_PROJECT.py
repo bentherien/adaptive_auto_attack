@@ -356,8 +356,6 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
 
     # MODIFIED CODE START
 
-
-
     img_idx = [x for x in range(len(data_set[1]))]
     label = data_set[1]
     all_atk_labs = label
@@ -400,6 +398,7 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
     total_bn = 0
     total_fn = 0
 
+    X_adv_batches = []
     for i, test_data in enumerate(data_loader):
         bstart = i * batch_size
         bend = min((i + 1) * batch_size, len(not_suc_index))
@@ -410,6 +409,10 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
         clean_filed_index = (out_clean.data.max(1)[1] == y.data).detach().cpu().numpy()
         natural_acc += acc_clean_num
         not_suc_index[bstart:bend] = not_suc_index[bstart:bend] * clean_filed_index
+        
+        ### LUKE
+        X_adv_batch = X
+        
         if Lnorm =='Linf':
             random_noise = eps * torch.FloatTensor(*X.shape).uniform_(-eps, eps).sign().to(device)
             X_adv = X.data + random_noise
@@ -424,6 +427,13 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
         adv_filed_index = (out_adv.data.max(1)[1] == y.data).detach().cpu().numpy()
         begin_adv_acc += acc_adv_num
         not_suc_index[bstart:bend] = not_suc_index[bstart:bend] * adv_filed_index
+
+        ### LUKE
+        X_adv_batch[~adv_filed_index] = X_adv[~adv_filed_index]
+        X_adv_batches.append(X_adv_batch)
+    
+    tot_X_adv = torch.cat(X_adv_batches, dim=0)
+    print("Shape of adversarial examples: ", tot_X_adv.shape)
         
     max_loss[~not_suc_index]= np.ones((~not_suc_index).sum())
     clean_acc = natural_acc/len(all_atk_labs)
@@ -558,6 +568,10 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
             else:
                 print(now_need_atk_num)
             now_need_atk_index = np.ones(now_need_atk_num)
+            
+            ### LUKE
+            now_need_atk_X_adv = tot_X_adv[not_suc_need_atk_index]
+            
             now_max_loss = max_loss[not_suc_need_atk_index]
 
             # START MODIFIED CODE
@@ -599,6 +613,10 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
                                       data_set=data_set, BIAS_ATK=BIAS_ATK,final_bias_ODI =final_odi_atk,No_epoch=No_epoch,num_class=num_class,
                                       MT=MT,Lnorm=Lnorm,out_re=out_re,device=device)
                     now_need_atk_index[bstart:bend] = now_need_atk_index[bstart:bend] * atk_filed_index_cold
+                    ### LUKE
+                    now_need_atk_X_adv[bstart:bend][~atk_filed_index_cold] = X_pgd[~atk_filed_index_cold]
+
+
                     now_max_loss[bstart:bend] = np.where(now_max_loss[bstart:bend]>each_max_loss,now_max_loss[bstart:bend],each_max_loss)
                     used_backward_num +=backward_num
                     total_adi_atk_suc_num+=odi_atk_suc_num
@@ -609,6 +627,9 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
 
             not_suc_index[not_suc_need_atk_index]=now_need_atk_index
             max_loss[not_suc_need_atk_index]= now_max_loss
+
+            ### LUKE
+            tot_X_adv[not_suc_need_atk_index] = now_need_atk_X_adv
 
             print(f'No.{len(acc_curve)} clean_acc: {clean_acc:0.4} robust acc: {not_suc_index.sum()/len(all_atk_labs):0.4} used_bp_num: {used_backward_num} '
                   f'used_fp_num: {total_fn} now_atk_num: {now_need_atk_num} now_correct_num: {robust_acc_oneshot} ')
@@ -622,7 +643,8 @@ def Adaptive_Auto_white_box_attack(model, device, eps, is_random, batch_size,
             neptune_run["AAA/now_need_atk_num"].log(now_need_atk_num)
         if now_need_atk_num == 0:
             break
-        # END MODIFIED CODE
+    # END MODIFIED CODE
+    return tot_X_adv, robust_acc
 
 class Normalize(nn.Module):
     def __init__(self, mean, std):

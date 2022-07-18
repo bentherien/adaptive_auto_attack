@@ -14,6 +14,7 @@ import torchvision.transforms.functional as tF
 
 from cub2011 import Cub2011
 from skimage.transform import SimilarityTransform
+from tqdm import tqdm
 
 
 
@@ -526,7 +527,7 @@ def get_w10_images(dataset,dataloader,model,device_num):
 def get_gridsearch_images(dataset, dataloader, model, device_num):
     w10_X,w10_Y = [],[]
     criterion_kl_SST = nn.KLDivLoss(reduce=False)
-    for X,Y in dataloader:
+    for X,Y in tqdm(dataloader):
         X = X.cuda(device_num)
         Y = Y.cuda(device_num)
 

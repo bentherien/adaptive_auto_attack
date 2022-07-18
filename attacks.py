@@ -25,6 +25,7 @@ from augmentation_tools import get_w10_images, get_gridsearch_images, show_reg_a
 from new_trades_losses import (trades_loss_ORIG, trades_loss_linfty_compose_RT, 
                                trades_loss_linfty_u_RT, trades_loss_RT,)
 from proj_Adaptive_Auto_Attack_main_PROJECT import Adaptive_Auto_white_box_attack
+from autoattack import AutoAttack
 from torch.utils.data import TensorDataset, DataLoader
 
 def _pgd_whitebox(model,
@@ -52,6 +53,7 @@ def _pgd_whitebox(model,
     err_pgd = (model(X_pgd).data.max(1)[1] != y.data).float().sum()
     return err, err_pgd, X_pgd
 
+# Done
 def pgd(model, dataset_name, dataset, dataloader, device_num, pgd_config, neptune_run, device):
     """
     evaluate model by white-box attack
@@ -82,89 +84,80 @@ def pgd(model, dataset_name, dataset, dataloader, device_num, pgd_config, neptun
     natural_acc = (total - natural_err_total) / total
     X_adv = torch.cat(X_adv_batches, dim=0)
     X = torch.cat(X_batches, dim=0)
-    print(X_adv.shape, X.shape)
 
     if neptune_run:
         neptune_run['pgd_robust_acc'] = robust_acc 
         neptune_run['pgd_natural_acc'] = natural_acc
-    
-    print('robust acc: ', robust_acc)
-    print('natural acc: ', natural_acc)
 
-    return X_adv, X
+    return X_adv, X, robust_acc, natural_acc
 
-def pgd_compose_w10(model, dataset_name, dataset, dataloader, device_num, pgd_config, neptune_run, device):
+# Done
+def pgd_compose_RT(model, X_rtgs, Y, dataset_name, dataset, device_num, pgd_config, neptune_run, device):
     if neptune_run:
         neptune_run['pgd_eval_config'] = pgd_config
 
-    w10_X, w10_Y = get_w10_images(dataset,dataloader,model,device_num)
-    w10_X, w10_Y = w10_X.detach().cpu(), w10_Y.detach().cpu()
-
-    new_test_dataset = TensorDataset(w10_X, w10_Y)
+    new_test_dataset = TensorDataset(X_rtgs, Y)
     new_test_dataloader = DataLoader(new_test_dataset, batch_size=128, shuffle=False, num_workers=1, pin_memory= True)
 
-    X_adv, X = pgd(model, dataset_name, dataset, new_test_dataloader, device_num, pgd_config, neptune_run, device)
+    X_adv, X, robust_acc, natural_acc = pgd(model, dataset_name, dataset, new_test_dataloader, device_num, pgd_config, neptune_run, device)
 
-def pgd_union_w10(model, dataset_name, dataset, dataloader, device_num, pgd_config, neptune_run, device):
+    print("PGD Compose RT Grid Search Accuracy: ", float(robust_acc.detach().cpu()))
+    print("RT Grid Search Accuracy: ", float(natural_acc.detach().cpu()))
+
+# Done
+def pgd_union_RT(model, X_rtgs, Y, dataset_name, dataset, dataloader, device_num, pgd_config, neptune_run, device):
     if neptune_run:
         neptune_run['pgd_eval_config'] = pgd_config
 
-    print("Constructing RT adversarial examples")
-    w10_X, w10_Y = get_w10_images(dataset,dataloader,model,device_num)
-    print("Constructing L_infty PGD adversarial examples")
-    pgd_X, X = pgd(model, dataset_name, dataset, dataloader, device_num, pgd_config, neptune_run, device)
+    X_pgd, X, robust_acc, natural_acc = pgd(model, dataset_name, dataset, dataloader, device_num, pgd_config, neptune_run, device)
+    print("PGD Accuracy: ", float(robust_acc.detach().cpu()))
+    print("Natural Accuracy: ", float(natural_acc.detach().cpu()))
 
     with torch.no_grad():
-        print("Evaluating union")
-        losses = torch.zeros((X.shape[0], 2)).cuda(device_num)
-        criterion = nn.KLDivLoss(reduce=False)
+        X_rtgs = X_rtgs.cuda(device_num)
+        Y = Y.cuda(device_num)
+        logits_rtgs = torch.zeros((X.shape[0], 10)).cuda(device_num)
+        logits_pgd = torch.zeros((X.shape[0], 10)).cuda(device_num)
         for i in range(X.shape[0] // 128 + 1):
             start_idx = i * 128
             end_idx = (i+1) * 128
 
-            losses[start_idx:end_idx, 0] = torch.sum(criterion(F.log_softmax(model(w10_X[start_idx:end_idx]), dim=1),
-                                                                F.softmax(model(X[start_idx:end_idx]), dim=1)), dim=1)
+            logits_rtgs[start_idx:end_idx] = F.softmax(model(X_rtgs[start_idx:end_idx]), dim=1)
+            logits_pgd[start_idx:end_idx] = F.softmax(model(X_pgd[start_idx:end_idx]), dim=1)
 
-            losses[start_idx:end_idx, 1] = torch.sum(criterion(F.log_softmax(model(pgd_X[start_idx:end_idx]), dim=1),
-                                                                F.softmax(model(X[start_idx:end_idx]), dim=1)), dim=1)
+        preds_rtgs = torch.argmax(logits_rtgs, dim=1)
+        preds_pgd = torch.argmax(logits_pgd, dim=1)
 
-            if end_idx > 10000:
-                print(end_idx)
-
-        print("Constructing RT union L_infty PGD adversarial examples")
         X_final = torch.zeros_like(X)
-        union_index = torch.argmax(losses, dim=1)
         for i in range(len(X)):
-            if union_index[i] == 0:
-                X_final[i] = w10_X[i]
+            if preds_rtgs[i] != Y[i]:
+                X_final[i] = X_rtgs[i]
             else:
-                X_final[i] = pgd_X[i]
+               X_final[i] = X_pgd[i]
 
-        print("Evaluating on adversarial examples")
         X_final = X_final.detach().cpu()
-        w10_Y = w10_Y.detach().cpu()
-        final_dataset = TensorDataset(X_final, w10_Y)
+        Y = Y.detach().cpu()
+        final_dataset = TensorDataset(X_final, Y)
         final_dataloader = DataLoader(final_dataset, batch_size=128, shuffle=False, num_workers=1, pin_memory= True)
 
     model.eval()
     err_total = 0
     total = 0
-
     for data, target in final_dataloader:
         data, target = data.to(device), target.to(device)
         # pgd attack
         X, y = Variable(data, requires_grad=True), Variable(target)
-        err, _, X_adv_batch = _pgd_whitebox(model, X, y, epsilon=0, num_steps=1, step_size=0.01)
+        err, _, _ = _pgd_whitebox(model, X, y, epsilon=0, num_steps=1, step_size=0.01)
         err_total += err
         total += X.shape[0]
 
     acc = (total - err_total) / total
 
-    print("Union accuracy", acc)
+    print("PGD Union RT GS Accuracy: ", float(acc.detach().cpu()))
 
-def aaa_compose_w10(model, dataset_name, dataset, dataloader, device_num, aaa_config, neptune_run, device):
+
+def aaa_compose_RT(model, X_rtgs, Y, dataset_name, dataset, device_num, aaa_config, neptune_run, device):
     """Function tests the current model using the AAA attack.
-
     Args:
         model (torch.nn.Module): the model tested
         dataset_name (string): the name of the dataset
@@ -177,20 +170,22 @@ def aaa_compose_w10(model, dataset_name, dataset, dataloader, device_num, aaa_co
     if neptune_run:
         neptune_run['aaa_eval_config'] = aaa_config
 
-    w10_X, w10_Y = get_w10_images(dataset,dataloader,model,device_num)
-    print(w10_X.shape,w10_Y.shape)
-    
-    print(w10_X.permute(0,2,3,1).shape,w10_Y.shape)
-    w10_X, w10_Y = w10_X.permute(0,2,3,1).detach().cpu().numpy(), w10_Y.detach().cpu().numpy()
+    # print("Running AA")
+    # adversary = AutoAttack(model, norm='Linf', eps=aaa_config.ep, version='standard', device=device)
+    # X_adv = adversary.run_standard_evaluation(X_rtgs, Y, bs=aaa_config.batch_size)
+
+    # print(X_adv.shape)
+
+    X_rtgs_numpy, Y_numpy = X_rtgs.permute(0,2,3,1).numpy(), Y.numpy()
 
     data_set = (
-        w10_X,
-        w10_Y,
+        X_rtgs_numpy,
+        Y_numpy,
         aaa_config.dataset_name,
         aaa_config.dataset_name, #used for selecting AAA hyperparameters
     )
     
-    Adaptive_Auto_white_box_attack(model=model, 
+    X_adv, robust_acc = Adaptive_Auto_white_box_attack(model=model, 
                                    device=device, 
                                    eps=aaa_config.ep, 
                                    is_random=aaa_config.random, 
@@ -200,57 +195,40 @@ def aaa_compose_w10(model, dataset_name, dataset, dataloader, device_num, aaa_co
                                    data_set=data_set,
                                    Lnorm=aaa_config.Lnorm,
                                    neptune_run=neptune_run)
-
-
-def aaa_compose_gridsearch(model, dataset_name, dataset, dataloader, device_num, aaa_config, neptune_run, device):
-    """Function tests the current model using the AAA attack.
-
-    Args:
-        model (torch.nn.Module): the model tested
-        dataset_name (string): the name of the dataset
-        dataset (torch.util.dataset): the dataset
-        dataloader (torch.util.dataloader): the test dataloader
-        device_num (int): the gpu number to use
-        aaa_config (config object): the config object for aaa attack
-        neptune_run (neptune object): logger for neptune.ai 
-    """
-    if neptune_run:
-        neptune_run['aaa_eval_config'] = aaa_config
-
-    gridsearch_X, gridsearch_Y = get_gridsearch_images(dataset,dataloader,model,device_num)
-    print(gridsearch_X.shape,gridsearch_Y.shape)
-
-    # cmap = 'gray' if dataset_name == "MNIST" else None
-    # if neptune_run:
-    #     show_reg_aug_side_by_side_numpy(dataset_regular=dataset,
-    #                                     images_aug=w10_X,
-    #                                     labels=w10_Y,
-    #                                     classes=dataset.classes,
-    #                                     total_plots=40,
-    #                                     plots_per_row=5,
-    #                                     figsize=(20,67),
-    #                                     savepath='/tmp/aaa_test_images.png',
-    #                                     cmap=cmap)
-    #     neptune_run["aaa_compose_w10/side_by_side"].upload('/tmp/aaa_test_images.png')
     
-    print(gridsearch_X.permute(0,2,3,1).shape,gridsearch_Y.shape)
-    gridsearch_X, gridsearch_Y = gridsearch_X.permute(0,2,3,1).detach().cpu().numpy(), gridsearch_Y.detach().cpu().numpy()
+    print("AAA Compose RT GS Accuracy: ", robust_acc)
 
-    data_set = (
-        gridsearch_X,
-        gridsearch_Y,
-        aaa_config.dataset_name,
-        aaa_config.dataset_name, #used for selecting AAA hyperparameters
-    )
+    with torch.no_grad():
+        model.eval()
+        X_adv = X_adv.cuda(device_num)
+        Y = Y.cuda(device_num)
+        logits_adv = torch.zeros((X_adv.shape[0], 10)).cuda(device_num)
+        for i in range(X_adv.shape[0] // 128 + 1):
+            start_idx = i * 128
+            end_idx = (i+1) * 128
 
-    
-    Adaptive_Auto_white_box_attack(model=model, 
-                                   device=device, 
-                                   eps=aaa_config.ep, 
-                                   is_random=aaa_config.random, 
-                                   batch_size=aaa_config.batch_size, 
-                                   average_num=aaa_config.average_num, 
-                                   model_name=None,#Only used for imagenet in AAA 
-                                   data_set=data_set,
-                                   Lnorm=aaa_config.Lnorm,
-                                   neptune_run=neptune_run)
+            logits_adv[start_idx:end_idx] = F.softmax(model(X_adv[start_idx:end_idx]), dim=1)
+
+        preds_adv = torch.argmax(logits_adv, dim=1)
+        acc = torch.mean((preds_adv == Y).float())
+        print("AA Compose RT GS Accuracy (confirmed): ", float(acc.detach().cpu()))
+
+
+    print("Confirming correctness...")
+    confirm_dataset = TensorDataset(X_adv.detach().cpu(), Y.detach().cpu())
+    confirm_dataloader = DataLoader(confirm_dataset, batch_size=128, shuffle=False, num_workers=1, pin_memory= True)
+
+    model.eval()
+    err_total = 0
+    total = 0
+    for data, target in confirm_dataloader:
+        data, target = data.to(device), target.to(device)
+        # pgd attack
+        X, y = Variable(data, requires_grad=True), Variable(target)
+        err, _, _ = _pgd_whitebox(model, X, y, epsilon=0, num_steps=1, step_size=0.01)
+        err_total += err
+        total += X.shape[0]
+
+    acc = (total - err_total) / total
+
+    print("AA Compose RT GS Accuracy (confirmed): ", float(acc.detach().cpu()))

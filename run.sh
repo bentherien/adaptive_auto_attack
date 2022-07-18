@@ -7,4 +7,4 @@
 # python3 eval.py -nn -c ./config/defenses/cifar10/RT_3_trades_cifar10.py -dn 2
 # python3 eval.py -nn -c ./config/defenses/cifar10/L_infty_3_trades_cifar10.py -dn 2
 
-python3 eval.py -nn -c ./config/defenses/cifar10/L_infty_6_trades_cifar10.py -dn 2
+python3 eval.py -nn -c ./config/defenses/cifar10/L_infty_6_trades_cifar10.py -dn 3

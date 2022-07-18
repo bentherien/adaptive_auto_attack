@@ -22,8 +22,8 @@ from models.net_mnist import *
 from models.small_cnn import *
 from new_trades_losses import (trades_loss_ORIG, trades_loss_linfty_compose_RT, 
                                trades_loss_linfty_u_RT, trades_loss_RT,)
-# from attacks import aaa_compose_w10, pgd_compose_w10, aaa_union_w10, pgd_union_w10, pgd, aaa, w10, natural_accuracy
-from attacks import pgd, pgd_compose_w10, pgd_union_w10
+from augmentation_tools import get_gridsearch_images
+from attacks import pgd, pgd_compose_RT, pgd_union_RT, aaa_compose_RT
 
 def get_model(model_name,device,verbose=False):
     if model_name == 'SmallCNN':
@@ -56,7 +56,7 @@ cfg._cfg_dict.update({k:v for k,v in args.__dict__.items() if v != None})
 print(cfg)
 
 identifier = "{}_{}_{}_{}".format(cfg.dataset, cfg.trades_loss, cfg.seed, cfg.beta)
-print(identifier)
+print("Model identifier: ", identifier)
 
 if args.no_neptune:
     neptune_run = None
@@ -92,28 +92,33 @@ else:
 
 
 model = get_model(cfg.model_name, device, verbose=cfg.verbose)
-model.load_state_dict(torch.load(os.path.join(model_dir, 'model-{}-final.pt'.format(cfg.model_name))))
+model.load_state_dict(torch.load(os.path.join(model_dir, 'model-{}-final.pt'.format(cfg.model_name)), map_location=device))
 
 print("Evaluating on attack suite.")
 
-# print("Evaluating aaa compose w10")
-# aaa_compose_w10(
-#         model=model,
-#         dataset_name=cfg.dataset,
-#         dataset=testset,
-#         dataloader=test_loader,
-#         device_num=cfg.device_num,
-#         aaa_config=Config.fromfile(cfg.aaa_config),
-#         neptune_run=neptune_run,
-#         device=device
-# )
+# First get worst-case RT images
+X_rtgs, Y = get_gridsearch_images(testset, test_loader, model, cfg.device_num)
+X_rtgs = X_rtgs.detach().cpu()
+Y = Y.detach().cpu()
 
-# print("Evaluating pgd compose w10")
-# pgd_compose_w10(
+aaa_compose_RT(
+        model=model,
+        X_rtgs=X_rtgs,
+        Y=Y,
+        dataset_name=cfg.dataset,
+        dataset=testset,
+        device_num=cfg.device_num,
+        aaa_config=Config.fromfile(cfg.aaa_config),
+        neptune_run=neptune_run,
+        device=device
+)
+
+# pgd_compose_RT(
 #         model=model,
+#         X_rtgs=X_rtgs,
+#         Y=Y,
 #         dataset_name=cfg.dataset,
 #         dataset=testset,
-#         dataloader=test_loader,
 #         device_num=cfg.device_num,
 #         pgd_config=Config.fromfile(cfg.pgd_config),
 #         neptune_run=neptune_run,
@@ -121,7 +126,7 @@ print("Evaluating on attack suite.")
 # )
 
 # print("Evaluating aaa union w10")
-# aaa_union_w10(
+# aaa_union_gridsearch(
 #         model=model,
 #         dataset_name=cfg.dataset,
 #         dataset=testset,
@@ -132,9 +137,10 @@ print("Evaluating on attack suite.")
 #         device=device
 # )
 
-# print("Evaluating pgd union w10")
-# pgd_union_w10(
+# pgd_union_RT(
 #         model=model,
+#         X_rtgs=X_rtgs,
+#         Y=Y,
 #         dataset_name=cfg.dataset,
 #         dataset=testset,
 #         dataloader=test_loader,
@@ -143,27 +149,3 @@ print("Evaluating on attack suite.")
 #         neptune_run=neptune_run,
 #         device=device
 # )
-
-# print("Evaluating aaa")
-# aaa(
-#         model=model,
-#         dataset_name=cfg.dataset,
-#         dataset=testset,
-#         dataloader=test_loader,
-#         device_num=cfg.device_num,
-#         aaa_config=Config.fromfile(cfg.aaa_config),
-#         neptune_run=neptune_run,
-#         device=device
-# )
-
-print("Evaluating pgd")
-pgd(
-        model=model,
-        dataset_name=cfg.dataset,
-        dataset=testset,
-        dataloader=test_loader,
-        device_num=cfg.device_num,
-        pgd_config=Config.fromfile(cfg.pgd_config),
-        neptune_run=neptune_run,
-        device=device
-)

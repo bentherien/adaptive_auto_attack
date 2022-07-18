@@ -98,19 +98,25 @@ def select_gridsearch(model, x_natural, y, criterion, device_num):
     with torch.no_grad():
         W = x_natural.shape[2]
         H = x_natural.shape[3]
-        
-        rotation_grid = list(np.linspace(-30, 30, 31))
-        translation_x_grid = list(np.linspace(-3/W, 3/W, 5))
-        translation_y_grid = list(np.linspace(-3/H, 3/H, 5))
 
-        x_adv = torch.zeros_like(x_natural)
-        for i in tqdm(range(len(x_natural))):
-            best_loss = float('-inf')
-            best_spatial_x = torch.zeros_like(x_natural[i])
-            for rot in rotation_grid:
-                for trans_x in translation_x_grid:
-                    for trans_y in translation_y_grid:
-                        x_spatial = T.functional.affine(x_natural[i], 
+        N_ROT = 2
+        N_TRANS_X = 2
+        N_TRANS_Y = 2
+        
+        rotation_grid = list(np.linspace(-30, 30, N_ROT))
+        translation_x_grid = list(np.linspace(-3/W, 3/W, N_TRANS_X))
+        translation_y_grid = list(np.linspace(-3/H, 3/H, N_TRANS_Y))
+
+        losses = torch.zeros(N_ROT * N_TRANS_X * N_TRANS_Y, x_natural.shape[0]).cuda(device_num)
+        x_spatial_batch_all = torch.zeros((N_ROT * N_TRANS_X * N_TRANS_Y,) + x_natural.shape).cuda(device_num)
+        count = 0
+        spatial_dict = {}
+        for rot in rotation_grid:
+            for trans_x in translation_x_grid:
+                for trans_y in translation_y_grid:
+                    x_spatial_batch = torch.zeros_like(x_natural)
+                    for i in range(len(x_natural)):
+                        x_spatial_batch[i] = T.functional.affine(x_natural[i], 
                                             angle= rot, 
                                             translate= [trans_x, trans_y], 
                                             scale= 1, 
@@ -118,16 +124,19 @@ def select_gridsearch(model, x_natural, y, criterion, device_num):
                                             interpolation= T.InterpolationMode.BILINEAR, 
                                             fill= 0)
 
-                        loss = criterion(F.log_softmax(model(x_spatial.unsqueeze(0)), dim=1), F.softmax(model(x_natural[i].unsqueeze(0)), dim=1))
-                        
-                        if loss > best_loss:
-                            best_loss = loss
-                            best_spatial_x = x_spatial
-                        
-            x_adv[i] = best_spatial_x
+                    losses[count] = torch.sum(criterion(F.log_softmax(model(x_spatial_batch), dim=1),
+                                                        F.softmax(model(x_natural), dim=1)), dim=1)
+                    spatial_dict[count] = (rot, trans_x, trans_y)
+                    x_spatial_batch_all[count] = x_spatial_batch
+                    count += 1
 
-    return x_adv
+        rt_gs_index = torch.argmax(losses, dim=0)   
+        x_spatial_batch_all = torch.transpose(x_spatial_batch_all, 0, 1)
+        x_adv = torch.zeros_like(x_natural)
+        for i in range(len(x_natural)):
+            x_adv[i] = x_spatial_batch_all[i][rt_gs_index[i]]
 
+        return x_adv
 
 def select_W10(model, x_natural, y, criterion, device_num):
     """
