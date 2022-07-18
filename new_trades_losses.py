@@ -485,8 +485,63 @@ def trades_loss_RT_and_linfty_and_composition(model,
         neptune_run['training_robust_loss'].log(loss_robust.item())
         neptune_run['training_natural_loss'].log(loss_natural.item())
     loss = loss_natural + loss_robust
-    return loss    
+    return loss
 
 
+def trades_loss_RT_and_linfty_and_composition_fast(model,
+                                x_natural,
+                                y,
+                                optimizer,
+                                step_size=0.003,
+                                epsilon=0.031,
+                                perturb_steps=10,
+                                beta=1.0,
+                                distance='l_inf',
+                                device_num=0,
+                                neptune_run=None):
+    """modified trades loss which includes RT and composition components"""
+    # define KL-loss
+    criterion_kl = nn.KLDivLoss(size_average=False)
+    criterion_kl_SST = nn.KLDivLoss(reduce=False)
+    model.eval()
+    batch_size = len(x_natural)
+    # generate adversarial example
+    bs_3 = int(batch_size/3)
+    # we will split the batch into [Nat TRADES, Comp TRADES, and RT TRADES]
 
+
+    ### MODIFICATION START
+
+    x_adv_RT = select_WX(model, x_natural[bs_3:,...], y[bs_3:,...], criterion_kl_SST, device_num)
+    x_adv_start, x_adv_RT = x_adv_RT[:bs_3,...], x_adv_RT[bs_3:,...]
+    ### MODIFICATION_END
+
+    x_adv_both = get_adv_training_examples(torch.cat([x_natural[:bs_3,...],x_adv_start],dim=0),
+                                           criterion_kl,model,distance,device_num,
+                                           perturb_steps,epsilon,step_size)
+
+    x_adv_pgd, x_adv_comp = x_adv_both[:bs_3,...], x_adv_both[bs_3:,...]
+
+
+    assert x_adv_pgd.shape == x_adv_comp.shape
+
+    # zero gradient
+    optimizer.zero_grad()
+    # calculate robust loss
+    logits = model(x_natural)
+    softmax_nat =  F.softmax(logits, dim=1)
+    loss_natural = F.cross_entropy(logits, y)
+    in_adv = torch.cat([x_adv_pgd,x_adv_comp,x_adv_RT],dim=0)
+    out_adv = model(in_adv)
+    assert in_adv.shape == x_natural.shape
+    loss_robust = (1.0 / batch_size) * criterion_kl(F.log_softmax(out_adv, dim=1),
+                                                        softmax_nat)
+
+
+    loss_robust = beta * loss_robust
+    if neptune_run:
+        neptune_run['training_robust_loss'].log(loss_robust.item())
+        neptune_run['training_natural_loss'].log(loss_natural.item())
+    loss = loss_natural + loss_robust
+    return loss
 
