@@ -6,7 +6,7 @@ import torch
 import torchvision
 import time
 
-
+import os.path as osp
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
@@ -65,6 +65,8 @@ parser.add_argument('--config', '-c', default='./config/defenses/default_runtime
                     type=str, metavar='CFG', help='Whether to use neptune logging or not')
 parser.add_argument('--device-num', '-dn', default=0, 
                     type=int, required=True, help='The number of the GPU to use')
+parser.add_argument('--resume',action='store_true', default=False, 
+                    help='Whether to resume from a saved model or not.')
 
 
 args = parser.parse_args()
@@ -343,6 +345,19 @@ def test_on_aaa(model,dataset_name,dataset,dataloader,device_num,aaa_config,nept
                                    neptune_run=neptune_run)
 
 
+def get_last_epoch(savepath,prefix):
+    """get the largest epoch number
+    """ 
+    epochs = []
+    for x in os.listdir(savepath):
+        if x[:len(prefix)] == prefix:
+            epochs.append(int(x[len(prefix):-3]))
+        else:
+            pass
+    if epochs == []:
+        return None
+    else:    
+        return sorted(epochs,reverse=False)[-1]
 
 
 def main():
@@ -353,7 +368,21 @@ def main():
     optimizer = optim.SGD(model.parameters(), lr=cfg.lr, momentum=cfg.momentum, weight_decay=cfg.weight_decay)
     test_time, train_time = [],[]
 
-    for epoch in range(1, cfg.epochs + 1):
+    epoch_start = 1
+
+    if cfg.resume:
+        prefix = "model-{}-epoch".format(cfg.model_name)
+        save_epoch = get_last_epoch(model_dir,prefix)
+        if save_epoch != None:
+            print(f"Resuming from {prefix}{save_epoch}.pt")
+            model.load_state_dict(torch.load(osp.join(model_dir,f"{prefix}{save_epoch}.pt")))
+            optimizer.load_state_dict(torch.load(osp.join(model_dir,"opt-{}-checkpoint_epoch{}.tar".format(cfg.model_name,save_epoch))))
+            epoch_start = save_epoch + 1
+        else:
+            print("Failed to resume from checkpoint, no saved model with prefix {}".format(prefix))
+
+    print([x for x in range(epoch_start, cfg.epochs + 1)])
+    for epoch in range(epoch_start, cfg.epochs + 1):
         t1 = time.time()
         # adjust learning rate for SGD
         if cfg.dataset == 'MNIST':
@@ -363,6 +392,13 @@ def main():
 
         if neptune_run:
             neptune_run['learning_rate'].log(lr_)
+
+
+        # if epoch % cfg.save_freq == 0:
+        #     torch.save(model.state_dict(),
+        #                os.path.join(model_dir, 'model-{}-epoch{}.pt'.format(cfg.model_name,epoch)))
+        #     torch.save(optimizer.state_dict(),
+        #                os.path.join(model_dir, 'opt-{}-checkpoint_epoch{}.tar'.format(cfg.model_name,epoch)))
 
         # adversarial training
         train(cfg, model, device, train_loader, optimizer, epoch, cfg.device_num, neptune_run)
@@ -384,11 +420,11 @@ def main():
         test_time.append(time.time()-t1)
 
         # # save checkpoint
-        # if epoch % cfg.save_freq == 0:
-        #     torch.save(model.state_dict(),
-        #                os.path.join(model_dir, 'model-{}-epoch{}.pt'.format(cfg.model_name,epoch)))
-        #     torch.save(optimizer.state_dict(),
-        #                os.path.join(model_dir, 'opt-{}-checkpoint_epoch{}.tar'.format(cfg.model_name,epoch)))
+        if epoch % cfg.save_freq == 0:
+            torch.save(model.state_dict(),
+                       os.path.join(model_dir, 'model-{}-epoch{}.pt'.format(cfg.model_name,epoch)))
+            torch.save(optimizer.state_dict(),
+                       os.path.join(model_dir, 'opt-{}-checkpoint_epoch{}.tar'.format(cfg.model_name,epoch)))
 
         remaining_time = estimateRemainingTime(train_time, test_time, epochs=cfg.epochs+1, currentEpoch=epoch, testStep=1)
         if neptune_run:
