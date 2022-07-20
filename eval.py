@@ -101,30 +101,30 @@ X_rtgs, Y = get_gridsearch_images(testset, test_loader, model, cfg.device_num)
 X_rtgs = X_rtgs.detach().cpu()
 Y = Y.detach().cpu()
 
-# pgd_compose_RT(
-#         model=model,
-#         X_rtgs=X_rtgs,
-#         Y=Y,
-#         dataset_name=cfg.dataset,
-#         dataset=testset,
-#         device_num=cfg.device_num,
-#         pgd_config=Config.fromfile(cfg.pgd_config),
-#         neptune_run=neptune_run,
-#         device=device
-# )
+pgd_compose_RT(
+        model=model,
+        X_rtgs=X_rtgs,
+        Y=Y,
+        dataset_name=cfg.dataset,
+        dataset=testset,
+        device_num=cfg.device_num,
+        pgd_config=Config.fromfile(cfg.pgd_config),
+        neptune_run=neptune_run,
+        device=device
+)
 
-# pgd_union_RT(
-#         model=model,
-#         X_rtgs=X_rtgs,
-#         Y=Y,
-#         dataset_name=cfg.dataset,
-#         dataset=testset,
-#         dataloader=test_loader,
-#         device_num=cfg.device_num,
-#         pgd_config=Config.fromfile(cfg.pgd_config),
-#         neptune_run=neptune_run,
-#         device=device
-# )
+pgd_union_RT(
+        model=model,
+        X_rtgs=X_rtgs,
+        Y=Y,
+        dataset_name=cfg.dataset,
+        dataset=testset,
+        dataloader=test_loader,
+        device_num=cfg.device_num,
+        pgd_config=Config.fromfile(cfg.pgd_config),
+        neptune_run=neptune_run,
+        device=device
+)
 
 aaa_union_RT(
         model=model,
@@ -139,14 +139,14 @@ aaa_union_RT(
         device=device
 )
 
-# aaa_compose_RT(
-#         model=model,
-#         X_rtgs=X_rtgs,
-#         Y=Y,
-#         dataset_name=cfg.dataset,
-#         dataset=testset,
-#         device_num=cfg.device_num,
-#         aaa_config=Config.fromfile(cfg.aaa_config),
-#         neptune_run=neptune_run,
-#         device=device
-# )
+aaa_compose_RT(
+        model=model,
+        X_rtgs=X_rtgs,
+        Y=Y,
+        dataset_name=cfg.dataset,
+        dataset=testset,
+        device_num=cfg.device_num,
+        aaa_config=Config.fromfile(cfg.aaa_config),
+        neptune_run=neptune_run,
+        device=device
+)

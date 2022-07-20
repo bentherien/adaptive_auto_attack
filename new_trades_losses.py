@@ -100,9 +100,9 @@ def select_gridsearch(model, x_natural, y, criterion, device_num):
         W = x_natural.shape[2]
         H = x_natural.shape[3]
 
-        N_ROT = 2
-        N_TRANS_X = 2
-        N_TRANS_Y = 2
+        N_ROT = 13
+        N_TRANS_X = 5
+        N_TRANS_Y = 5
         
         rotation_grid = list(np.linspace(-30, 30, N_ROT))
         translation_x_grid = list(np.linspace(-3/W, 3/W, N_TRANS_X))

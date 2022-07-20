@@ -25,7 +25,7 @@ from augmentation_tools import get_w10_images, get_gridsearch_images, show_reg_a
 from new_trades_losses import (trades_loss_ORIG, trades_loss_linfty_compose_RT, 
                                trades_loss_linfty_u_RT, trades_loss_RT,)
 from proj_Adaptive_Auto_Attack_main_PROJECT import Adaptive_Auto_white_box_attack
-from autoattack import AutoAttack
+# from autoattack import AutoAttack
 from torch.utils.data import TensorDataset, DataLoader
 
 def _pgd_whitebox(model,
@@ -98,8 +98,8 @@ def pgd_compose_RT(model, X_rtgs, Y, dataset_name, dataset, device_num, pgd_conf
 
     X_adv, X, robust_acc, natural_acc = pgd(model, dataset_name, dataset, new_test_dataloader, device_num, pgd_config, neptune_run, device)
 
-    print("PGD Compose RT Grid Search Accuracy: ", float(robust_acc.detach().cpu()))
-    print("RT Grid Search Accuracy: ", float(natural_acc.detach().cpu()))
+    print("PGD Compose RT GS Accuracy: ", float(robust_acc.detach().cpu()))
+    print("RT GS Accuracy: ", float(natural_acc.detach().cpu()))
     if neptune_run:
         neptune_run['pgd_compose_rt'] = float(robust_acc.detach().cpu())
         neptune_run['rt'] = float(natural_acc.detach().cpu())

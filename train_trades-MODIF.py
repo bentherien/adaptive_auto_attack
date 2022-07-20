@@ -23,7 +23,7 @@ from models.net_mnist import *
 from models.small_cnn import *
 from new_trades_losses import (trades_loss_ORIG, trades_loss_linfty_compose_RT, 
                                trades_loss_linfty_u_RT, trades_loss_RT,)
-from attacks import aaa_compose_w10
+# from attacks import aaa_compose_w10
 
 parser = argparse.ArgumentParser(description='PyTorch TRADES Adversarial Training')
 parser.add_argument('--batch-size', '-bs', type=int, #default=128, 
@@ -336,16 +336,16 @@ def main():
     if neptune_run:
         neptune_run[f'model_weights_{identifier}'].track_files(os.path.join(model_dir, 'model-{}-final.pt'.format(cfg.model_name)))
 
-    aaa_compose_w10(
-        model=model,
-        dataset_name=cfg.dataset,
-        dataset=testset,
-        dataloader=test_loader,
-        device_num=cfg.device_num,
-        aaa_config=Config.fromfile(cfg.aaa_config),
-        neptune_run=neptune_run,
-        device=device
-    )
+    # aaa_compose_w10(
+    #     model=model,
+    #     dataset_name=cfg.dataset,
+    #     dataset=testset,
+    #     dataloader=test_loader,
+    #     device_num=cfg.device_num,
+    #     aaa_config=Config.fromfile(cfg.aaa_config),
+    #     neptune_run=neptune_run,
+    #     device=device
+    # )
 
 
 if __name__ == '__main__':
