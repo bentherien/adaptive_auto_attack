@@ -1,5 +1,7 @@
 
 import torch
+from tqdm import tqdm
+import numpy as np
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -92,8 +94,52 @@ def trades_loss_ORIG(model,
     loss = loss_natural + loss_robust
     return loss
 
+def select_gridsearch(model, x_natural, y, criterion, device_num):
+    with torch.no_grad():
+        model.eval()
+        W = x_natural.shape[2]
+        H = x_natural.shape[3]
 
-def select_WX(model, x_natural, y, criterion, device_num):
+        N_ROT = 13
+        N_TRANS_X = 5
+        N_TRANS_Y = 5
+        
+        rotation_grid = list(np.linspace(-30, 30, N_ROT))
+        translation_x_grid = list(np.linspace(-3/W, 3/W, N_TRANS_X))
+        translation_y_grid = list(np.linspace(-3/H, 3/H, N_TRANS_Y))
+
+        losses = torch.zeros(N_ROT * N_TRANS_X * N_TRANS_Y, x_natural.shape[0]).cuda(device_num)
+        x_spatial_batch_all = torch.zeros((N_ROT * N_TRANS_X * N_TRANS_Y,) + x_natural.shape).cuda(device_num)
+        count = 0
+        spatial_dict = {}
+        for rot in rotation_grid:
+            for trans_x in translation_x_grid:
+                for trans_y in translation_y_grid:
+                    x_spatial_batch = torch.zeros_like(x_natural)
+                    for i in range(len(x_natural)):
+                        x_spatial_batch[i] = T.functional.affine(x_natural[i], 
+                                            angle= rot, 
+                                            translate= [trans_x, trans_y], 
+                                            scale= 1, 
+                                            shear= 0, 
+                                            interpolation= T.InterpolationMode.BILINEAR, 
+                                            fill= 0)
+
+                    losses[count] = torch.sum(criterion(F.log_softmax(model(x_spatial_batch), dim=1),
+                                                        F.softmax(model(x_natural), dim=1)), dim=1)
+                    spatial_dict[count] = (rot, trans_x, trans_y)
+                    x_spatial_batch_all[count] = x_spatial_batch
+                    count += 1
+
+        rt_gs_index = torch.argmax(losses, dim=0)   
+        x_spatial_batch_all = torch.transpose(x_spatial_batch_all, 0, 1)
+        x_adv = torch.zeros_like(x_natural)
+        for i in range(len(x_natural)):
+            x_adv[i] = x_spatial_batch_all[i][rt_gs_index[i]]
+
+        return x_adv
+
+def select_W10(model, x_natural, y, criterion, device_num):
     """
     Given a batch of inputs, this method selects the worst of 
     10 uniformly sampled spatial transformations.
@@ -152,7 +198,7 @@ def trades_loss_linfty_u_RT(model,
 
     ### MODIFICATION START
 
-    x_spatial_adv = select_WX(model, x_natural, y, criterion_kl_SST, device_num)
+    x_spatial_adv = select_W10(model, x_natural, y, criterion_kl_SST, device_num)
 
     ### MODIFICATION_END
 
@@ -268,7 +314,7 @@ def trades_loss_RT(model,
 
     ### MODIFICATION START
 
-    x_adv = select_WX(model, x_natural, y, criterion_kl_SST, device_num)
+    x_adv = select_W10(model, x_natural, y, criterion_kl_SST, device_num)
 
     ### MODIFICATION_END
     
@@ -310,7 +356,7 @@ def trades_loss_linfty_compose_RT(model,
 
     ### MODIFICATION START
 
-    x_adv_start = select_WX(model, x_natural, y, criterion_kl_SST, device_num)
+    x_adv_start = select_W10(model, x_natural, y, criterion_kl_SST, device_num)
 
     ### MODIFICATION_END
 

@@ -1,6 +1,6 @@
-_base_=['../default_runtime.py']
-batch_size=128
-test_batch_size=128
+_base_=['./default_runtime.py']
+batch_size=2048
+test_batch_size=2048
 epochs=100
 weight_decay=0
 lr=0.01
@@ -15,5 +15,8 @@ model_dir='./saved_models'
 model_name='SmallCNN'
 save_freq=5
 dataset='MNIST'
+
+
+trades_loss='natural'
 aaa_config='config/attack/mnist/default_aaa_mnist.py'
 pgd_config='config/attack/mnist/default_pgd_mnist.py'

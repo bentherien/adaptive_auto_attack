@@ -21,10 +21,9 @@ from models.wideresnet import *
 from models.resnet import *
 from models.net_mnist import *
 from models.small_cnn import *
-from augmentation_tools import get_worst_case_images, show_reg_aug_side_by_side_numpy
 from new_trades_losses import (trades_loss_ORIG, trades_loss_linfty_compose_RT, 
                                trades_loss_linfty_u_RT, trades_loss_RT,)
-from proj_Adaptive_Auto_Attack_main_PROJECT import Adaptive_Auto_white_box_attack
+# from attacks import aaa_compose_w10
 
 parser = argparse.ArgumentParser(description='PyTorch TRADES Adversarial Training')
 parser.add_argument('--batch-size', '-bs', type=int, #default=128, 
@@ -283,65 +282,6 @@ def estimateRemainingTime(trainTime, testTime, epochs, currentEpoch, testStep):
     return "{:02d}:{:02d}:{:02d} (HH:MM:SS)".format(remaining_hours,remainder_mins,remainder_secs)
 
 
-
-
-def test_on_aaa(model,dataset_name,dataset,dataloader,device_num,aaa_config,neptune_run,device):
-    """Function tests the current model using the AAA attack.
-
-    Args:
-        model (torch.nn.Module): the model tested
-        dataset_name (string): the name of the dataset
-        dataset (torch.util.dataset): the dataset
-        dataloader (torch.util.dataloader): the test dataloader
-        device_num (int): the gpu number to use
-        aaa_config (config object): the config object for aaa attack
-        neptune_run (neptune object): logger for neptune.ai 
-    """
-    if neptune_run:
-        neptune_run['aaa_eval_config'] = aaa_config
-
-    w10_X, w10_Y = get_worst_case_images(dataset,dataloader,model,device_num)
-    print(w10_X.shape,w10_Y.shape)
-    
-
-    cmap = 'gray' if dataset_name == "MNIST" else None
-    if neptune_run:
-        show_reg_aug_side_by_side_numpy(dataset_regular=dataset,
-                                        images_aug=w10_X,
-                                        labels=w10_Y,
-                                        classes=dataset.classes,
-                                        total_plots=40,
-                                        plots_per_row=5,
-                                        figsize=(20,67),
-                                        savepath='/tmp/aaa_test_images.png',
-                                        cmap=cmap)
-        neptune_run["AAA/side_by_side"].upload('/tmp/aaa_test_images.png')
-    
-    print(w10_X.permute(0,2,3,1).shape,w10_Y.shape)
-    w10_X, w10_Y = w10_X.permute(0,2,3,1).detach().cpu().numpy(), w10_Y.detach().cpu().numpy()
-
-    data_set = (
-        w10_X,
-        w10_Y,
-        aaa_config.dataset_name,
-        aaa_config.dataset_name, #used for selecting AAA hyperparameters
-    )
-
-    
-    Adaptive_Auto_white_box_attack(model=model, 
-                                   device=device, 
-                                   eps=aaa_config.ep, 
-                                   is_random=aaa_config.random, 
-                                   batch_size=aaa_config.batch_size, 
-                                   average_num=aaa_config.average_num, 
-                                   model_name=None,#Only used for imagenet in AAA 
-                                   data_set=data_set,
-                                   Lnorm=aaa_config.Lnorm,
-                                   neptune_run=neptune_run)
-
-
-
-
 def main():
     # init model, ResNet18() can be also used here for training
     model = get_model(cfg.model_name,device,verbose=cfg.verbose)
@@ -396,18 +336,16 @@ def main():
     if neptune_run:
         neptune_run[f'model_weights_{identifier}'].track_files(os.path.join(model_dir, 'model-{}-final.pt'.format(cfg.model_name)))
 
-
-
-    test_on_aaa(
-        model=model,
-        dataset_name=cfg.dataset,
-        dataset=testset,
-        dataloader=test_loader,
-        device_num=cfg.device_num,
-        aaa_config=Config.fromfile(cfg.aaa_config),
-        neptune_run=neptune_run,
-        device=device
-    )
+    # aaa_compose_w10(
+    #     model=model,
+    #     dataset_name=cfg.dataset,
+    #     dataset=testset,
+    #     dataloader=test_loader,
+    #     device_num=cfg.device_num,
+    #     aaa_config=Config.fromfile(cfg.aaa_config),
+    #     neptune_run=neptune_run,
+    #     device=device
+    # )
 
 
 if __name__ == '__main__':
