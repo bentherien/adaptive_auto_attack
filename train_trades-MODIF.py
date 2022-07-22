@@ -357,7 +357,7 @@ def get_last_epoch(savepath,prefix):
     if epochs == []:
         return None
     else:    
-        return sorted(epochs,reverse=False)[-1]
+        return sorted(epochs,reverse=False)[-2]
 
 
 def main():

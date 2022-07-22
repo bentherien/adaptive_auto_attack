@@ -1,3 +1,7 @@
+*.npy
+
+
+
 data/*
 .neptune/*
 .vscode/*

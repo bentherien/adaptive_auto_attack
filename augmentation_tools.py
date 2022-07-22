@@ -463,6 +463,38 @@ def get_aug_dataset(dataset, use_train=False, data_root_ovr=None, sstransformati
 
 
 
+
+
+
+def show_reg_aug_side_by_side_norm(dataset_regular,dataset_aug,total_plots=40,
+                              plots_per_row=5,figsize=(20,67),savepath=None,
+                              cmap='viridis'):
+    """Funtion plots regular and augmented images side by side for comparison."""
+    classes = dataset_regular.classes
+    n = np.ceil(total_plots/plots_per_row).astype(np.int32) * 2
+    fig, axs = plt.subplots(n, plots_per_row, figsize=figsize)
+ 
+    for x in range(total_plots):
+        norm = torch.norm(dataset_regular[x][0] - dataset_aug[x][0],p=float('inf'))
+
+        c,r = x % plots_per_row, int(x/plots_per_row) * 2
+        axs[r,c].set_title("Nat. {} Norm: {:.4f}".format(classes[dataset_regular[x][1]],norm.item()))
+        axs[r,c].imshow(dataset_regular[x][0].permute(1,2,0),cmap=cmap)
+        axs[r,c].set_axis_off()
+        
+        r += 1
+        axs[r,c].set_title("Aug. {} Norm: {:.4f}".format(classes[dataset_aug[x][1]],norm.item()))
+        axs[r,c].imshow(dataset_aug[x][0].permute(1,2,0),cmap=cmap)
+        axs[r,c].set_axis_off()
+
+    if savepath:
+        fig.savefig(savepath,bbox_inches='tight',dpi=400)
+    
+    return fig
+
+
+
+
 def show_reg_aug_side_by_side(dataset_regular,dataset_aug,total_plots=40,
                               plots_per_row=5,figsize=(20,67),savepath=None,
                               cmap='viridis'):
